@@ -48,8 +48,8 @@ function seedStoreAndCarts(db) {
   const storeId = db.prepare('SELECT store_id FROM stores WHERE code = ?').pluck().get(STORE.code);
   const addCart = db.prepare(`INSERT INTO carts (store_id, label, qr_code, roi_polygon) VALUES (?, ?, ?, ?)
                               ON CONFLICT (label) DO NOTHING`);
-  const addCamera = db.prepare(`INSERT INTO devices (cart_id, device_type, label)
-    SELECT c.cart_id, 'camera', 'กล้องรถเข็น ' || c.label FROM carts c
+  const addCamera = db.prepare(`INSERT INTO devices (cart_id, store_id, device_type, label)
+    SELECT c.cart_id, c.store_id, 'camera', 'กล้องรถเข็น ' || c.label FROM carts c
     WHERE c.label = ? AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.cart_id = c.cart_id AND d.device_type = 'camera')`);
   let carts = 0;
   for (const label of CART_LABELS) {
