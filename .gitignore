@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+__pycache__/
+.venv*/
+
+# secrets and certificates
+.env
+certs/
+
+# runtime data (database, frames, exports, logs)
+*.db
+*.db-wal
+*.db-shm
+db/backups/
+data/frames/
+exports/
+*.log
+
+# model weights and training artifacts (kept in SNP, never committed)
+*.pt
+*.engine
+*.onnx
+*.weights
+runs/
+datasets/
