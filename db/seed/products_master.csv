@@ -1,0 +1,21 @@
+class_name,sku,barcode,name_th,brand,product_line,flavor,variant,size_desc,category,sub_category,price,promo_price,in_model
+babimild_double_milk,CR-BBM-DML,8851123705776,เบบี้มายด์ ดับเบิ้ลมิลค์,Babi Mild,Babi Mild,double_milk,standard,160 g,care,baby_care,35,,0
+babimild_sweety_pink,CR-BBM-SWP,8851123703468,เบบี้มายด์ สวีทตี้พิงค์,Babi Mild,Babi Mild,sweety_pink,standard,160 g,care,baby_care,35,,0
+babimild_white_sakura,CR-BBM-WSK,8851123740593,เบบี้มายด์ ไวท์ซากุระ,Babi Mild,Babi Mild,white_sakura,standard,160 g,care,baby_care,40,,0
+bengbeng_pack12,SN-BBG-012,8850580200060,เบงเบง เวเฟอร์ แพ็ก 12 ชิ้น,Bengbeng,Beng Beng wafer,chocolate,pack12,48 g,snack,sweet_snack,48,,1
+doritos_mid_nacho,SN-DRT-NCM,8850718822164,โดริโทส รสนาโชชีส ขนาดกลาง,Doritos,Doritos,nacho_cheese,mid,50 g,snack,chips,20,,1
+kirei_refill_floral,CR-KRK-FLR,8850002044425,คิเรอิคิเรอิ ถุงเติม กลิ่นฟลอรัล,Kirei Kirei,Kirei Kirei refill,floral,refill,200 g,care,hand_soap,29,,0
+kirei_refill_lavender,CR-KRK-LVD,,คิเรอิคิเรอิ ถุงเติม กลิ่นลาเวนเดอร์,Kirei Kirei,Kirei Kirei refill,lavender,refill,200 g,care,hand_soap,29,,0
+kirei_refill_ori,CR-KRK-ORI,8850002020245,คิเรอิคิเรอิ ถุงเติม กลิ่นออริจินัล,Kirei Kirei,Kirei Kirei refill,original,refill,200 g,care,hand_soap,29,,0
+kirei_refill_peach,CR-KRK-PCH,,คิเรอิคิเรอิ ถุงเติม กลิ่นพีช,Kirei Kirei,Kirei Kirei refill,peach,refill,200 g,care,hand_soap,29,,0
+koalas_march_chocolate,SN-KLM-CHO,8852008300000,โคอะลา มาร์ช ช็อกโกแลต,Lotte,Koala's March,chocolate,standard,37 g,snack,sweet_snack,23,,1
+kohkae_small_wasabi,SN-KKE-WSS,8852023666006,โก๋แก่ ถั่ววาซาบิ ซองเล็ก,Kohkae,Koh-Kae coated peanut,wasabi,small,35 g,snack,nuts,11,,1
+lay_big_nori,SN-LAY-NRB,8850718801893,เลย์ รสโนริสาหร่าย ห่อใหญ่,Lay's,Lay's,nori,big,69 g,snack,chips,31,,1
+lay_big_ori,SN-LAY-ORB,8850718801213,เลย์ รสดั้งเดิม ห่อใหญ่,Lay's,Lay's,original,big,69 g,snack,chips,31,,1
+lay_big_rock_ori,SN-LAY-RKB,8850718801121,เลย์ ร็อค รสดั้งเดิม ห่อใหญ่,Lay's,Lay's,original,big_rock,69 g,snack,chips,31,,0
+lay_party_ori,SN-LAY-ORP,8850718814114,เลย์ รสดั้งเดิม ปาร์ตี้แพ็ก,Lay's,Lay's,original,party,105 g,snack,chips,45,,1
+mama_cup_ok_cheeseGo,ND-MMC-CHG,8850987194641,มาม่า คัพ OK ชีสโก,Mama,Mama Cup OK,cheese_gochujang,cup,80 g,instant_food,instant_noodle,20,,1
+mama_cup_ok_hotKR,ND-MMC-HKR,8850987148798,มาม่า คัพ OK ฮอตเกาหลี,Mama,Mama Cup OK,hot_korean,cup,80 g,instant_food,instant_noodle,20,,1
+pringles_norm_ori,SN-PRG-ORI,8886467100017,พริงเกิลส์ รสดั้งเดิม,Pringles,Pringles,original,normal,102 g,snack,chips,45,,1
+pringles_norm_sourcream,SN-PRG-SCO,8886467100024,พริงเกิลส์ รสซาวร์ครีมและหัวหอม,Pringles,Pringles,sour_cream,normal,102 g,snack,chips,45,,0
+rosdee_mid_pork,SE-RSD-PKM,8850250010937,รสดี ผงปรุงรสหมู ขนาดกลาง,Rosdee,Rosdee seasoning,pork,mid,17 g,seasoning,seasoning,13,,1
