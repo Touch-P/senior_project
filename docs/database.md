@@ -117,6 +117,8 @@ npm run db:seed   # สินค้า 20 รายการ, ราคา, ส�
 สร้างจาก schema ของ `db/smartcart.db` จริง (`sqlite_master`, `pragma_table_info`, `pragma_foreign_key_list`) ด้วย `npm run db:erd` — รันใหม่ทุกครั้งหลังเพิ่ม migration
 GitHub และ VS Code (ส่วนขยาย Markdown Preview Mermaid) แสดงภาพได้ทันที; ถ้าต้องการไฟล์ภาพสำหรับเล่ม ใช้ [mermaid.live](https://mermaid.live) หรือ `npx @mermaid-js/mermaid-cli` export เป็น SVG/PNG
 
+ไฟล์ภาพสำหรับเล่ม (export จาก schema หลัง migration 004): [ภาพรวม SVG](img/erd-overview.svg) · [ภาพรวม PNG](img/erd-overview.png) · [รายละเอียด SVG](img/erd-full.svg) · [รายละเอียด PNG](img/erd-full.png) — ต้อง export ใหม่ถ้า schema เปลี่ยน
+
 หมายเหตุการอ่าน:
 - `job_runs` ไม่มี FK จึงไม่อยู่ในภาพรวม (มีในรายละเอียดคอลัมน์)
 - ไม่แสดง view (`v_*`) และตาราง `schema_migrations`
