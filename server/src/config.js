@@ -25,6 +25,7 @@ const schema = z.object({
   INFERENCE_URL: z.string().url().default('http://127.0.0.1:8001'),
   INFERENCE_TIMEOUT_MS: num(2000),
   MODEL_PATH: z.string().optional(),
+  WEIGHTS_ROOT: z.string().default('C:/Users/Acer/Desktop/SNP'),
   CONF_THRESHOLD: num(0.7),
   TRACKER_WINDOW: num(8),
   TRACKER_ADD_K: num(3),
@@ -32,6 +33,7 @@ const schema = z.object({
   ADMIN_EMAIL: z.string().email().default('admin@smartcart.co.th'),
   ADMIN_PASSWORD: z.string().min(1).default('change-me'),
   SESSION_SECRET: z.string().min(1).default('change-me'),
+  DEV_STAFF_PASSWORD: z.string().min(1).default('staff1234'),
 });
 
 const parsed = schema.safeParse(process.env);
