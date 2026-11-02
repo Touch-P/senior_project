@@ -1,6 +1,6 @@
 import './setup.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -21,11 +21,12 @@ describe('migrations', () => {
   it('creates every table and view from scratch', () => {
     const db = openDb(':memory:');
     const { applied } = migrate(db);
-    assert.deepEqual(applied, ['001_init.sql', '002_presence_reasons.sql', '003_products_fts.sql', '004_align_instruction.sql']);
+    assert.deepEqual(applied, readdirSync(config.migrationsDir).filter((f) => f.endsWith('.sql')).sort());
+    assert.ok(applied.length >= 5);
     const names = db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view')").pluck().all();
     for (const t of ['stores', 'devices', 'carts', 'products', 'product_prices', 'model_versions', 'shopping_sessions',
       'cart_events', 'cart_item_history', 'frames', 'detections', 'user_feedback', 'alerts', 'admin_users',
-      'cart_item_presence', 'change_reasons', 'product_audit', 'products_fts', 'job_runs',
+      'cart_item_presence', 'change_reasons', 'product_audit', 'products_fts', 'job_runs', 'admin_sessions',
       'v_product_abandon', 'v_cooccurrence', 'v_frame_latency', 'v_change_reason_summary']) {
       assert.ok(names.includes(t), `missing ${t}`);
     }
