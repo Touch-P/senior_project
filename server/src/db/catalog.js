@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { config } from '../config.js';
 
 const MASTER_COLUMNS = ['class_name', 'sku', 'barcode', 'name_th', 'brand', 'product_line', 'flavor', 'variant',
-  'size_desc', 'category', 'sub_category', 'price', 'promo_price', 'in_model'];
+  'size_desc', 'category', 'sub_category', 'price', 'promo_price', 'in_model', 'weight_g'];
 
 /**
  * Minimal RFC 4180 CSV parser (quoted fields, escaped quotes, CRLF/LF).
@@ -53,12 +53,14 @@ export function readProductMaster(file = join(config.seedDir, 'products_master.c
     const price = Number(r.price), promo = r.promo_price === '' ? null : Number(r.promo_price);
     if (!(price > 0)) throw new Error(`products_master.csv line ${line}: price must be > 0`);
     if (promo != null && !(promo > 0 && promo < price)) throw new Error(`products_master.csv line ${line}: promo_price must be < price`);
+    const weight = r.weight_g === '' ? null : Number(r.weight_g);
+    if (weight != null && !(weight > 0)) throw new Error(`products_master.csv line ${line}: weight_g must be > 0`);
     const nul = (v) => (v === '' ? null : v);
     return {
       class_name: r.class_name, sku: nul(r.sku), barcode: nul(r.barcode), name_th: r.name_th, brand: nul(r.brand),
       product_line: nul(r.product_line), flavor: nul(r.flavor), variant: nul(r.variant), size_desc: nul(r.size_desc),
       category: nul(r.category), sub_category: nul(r.sub_category), price, promo_price: promo,
-      in_model: r.in_model === '1' ? 1 : 0,
+      in_model: r.in_model === '1' ? 1 : 0, weight_g: weight,
     };
   });
 }
@@ -76,13 +78,14 @@ export function importProductMaster(db, master, atMs = Date.now()) {
   const find = db.prepare('SELECT product_id FROM products WHERE class_name = ?');
   const edited = db.prepare('SELECT 1 FROM product_audit WHERE product_id = ? LIMIT 1');
   const insert = db.prepare(`INSERT INTO products (class_name, sku, barcode, name_th, brand, product_line, flavor, variant,
-      size_desc, category, sub_category, image_path, in_model)
+      size_desc, category, sub_category, image_path, in_model, weight_g)
     VALUES (@class_name, @sku, @barcode, @name_th, @brand, @product_line, @flavor, @variant,
-      @size_desc, @category, @sub_category, @image_path, @in_model)`);
+      @size_desc, @category, @sub_category, @image_path, @in_model, @weight_g)`);
   const update = db.prepare(`UPDATE products SET sku = @sku, barcode = COALESCE(@barcode, barcode), name_th = @name_th,
       brand = @brand, product_line = @product_line, flavor = @flavor, variant = @variant, size_desc = @size_desc,
-      category = @category, sub_category = @sub_category, image_path = COALESCE(image_path, @image_path)
-    WHERE product_id = @product_id AND (sku IS NOT @sku OR name_th IS NOT @name_th OR brand IS NOT @brand
+      category = @category, sub_category = @sub_category, image_path = COALESCE(image_path, @image_path),
+      weight_g = @weight_g
+    WHERE product_id = @product_id AND (weight_g IS NOT @weight_g OR sku IS NOT @sku OR name_th IS NOT @name_th OR brand IS NOT @brand
       OR product_line IS NOT @product_line OR flavor IS NOT @flavor OR variant IS NOT @variant
       OR size_desc IS NOT @size_desc OR category IS NOT @category OR sub_category IS NOT @sub_category
       OR (@barcode IS NOT NULL AND barcode IS NOT @barcode) OR (image_path IS NULL AND @image_path IS NOT NULL))`);

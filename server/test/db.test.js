@@ -21,7 +21,7 @@ describe('migrations', () => {
   it('creates every table and view from scratch', () => {
     const db = openDb(':memory:');
     const { applied } = migrate(db);
-    assert.deepEqual(applied, ['001_init.sql', '002_presence_reasons.sql', '003_products_fts.sql']);
+    assert.deepEqual(applied, ['001_init.sql', '002_presence_reasons.sql', '003_products_fts.sql', '004_align_instruction.sql']);
     const names = db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view')").pluck().all();
     for (const t of ['stores', 'devices', 'carts', 'products', 'product_prices', 'model_versions', 'shopping_sessions',
       'cart_events', 'cart_item_history', 'frames', 'detections', 'user_feedback', 'alerts', 'admin_users',
@@ -144,11 +144,55 @@ describe('constraints and search', () => {
     const baskets = [['lay_big_ori', 'pringles_norm_ori'], ['lay_big_ori', 'pringles_norm_ori'], ['rosdee_mid_pork'], ['lay_big_ori']];
     baskets.forEach((items, i) => {
       db.prepare("INSERT INTO shopping_sessions (session_id, cart_id, status, started_at_ms) VALUES (?, ?, 'checked_out', ?)").run(`b${i}`, cart, i);
-      for (const c of items) db.prepare("INSERT INTO cart_events (session_id, event_type, product_id, qty_delta, t_ms) VALUES (?, 'ADD', ?, 1, ?)").run(`b${i}`, id(c), i);
+      for (const c of items) db.prepare("INSERT INTO cart_events (session_id, event_type, product_id, qty_delta, occurred_at_ms) VALUES (?, 'ADD', ?, 1, ?)").run(`b${i}`, id(c), i);
     });
     const row = db.prepare('SELECT sessions_together, support, lift FROM v_cooccurrence WHERE product_a = ? AND product_b = ?')
       .get(Math.min(id('lay_big_ori'), id('pringles_norm_ori')), Math.max(id('lay_big_ori'), id('pringles_norm_ori')));
     // support = 2/4; lift = 0.5 / (3/4 * 2/4) = 1.333
     assert.deepEqual(row, { sessions_together: 2, support: 0.5, lift: 1.333 });
+  });
+});
+
+describe('004 alignment with instruction 2.7', () => {
+  const cols = (db, t) => db.prepare('SELECT name FROM pragma_table_info(?)').pluck().all(t);
+
+  it('adds the missing columns and renames cart_events columns', async () => {
+    const db = await freshDb();
+    assert.ok(cols(db, 'stores').includes('timezone'));
+    for (const c of ['store_id', 'camera_desc', 'app_version']) assert.ok(cols(db, 'devices').includes(c), c);
+    assert.ok(cols(db, 'products').includes('weight_g'));
+    assert.ok(cols(db, 'product_prices').includes('store_id'));
+    assert.ok(cols(db, 'model_versions').includes('imgsz'));
+    for (const c of ['rtt_ms', 'num_detections']) assert.ok(cols(db, 'frames').includes(c), c);
+    assert.ok(cols(db, 'user_feedback').includes('reported_by'));
+    assert.ok(cols(db, 'alerts').includes('resolved_by'));
+    const ev = cols(db, 'cart_events');
+    assert.ok(ev.includes('confidence_avg') && ev.includes('occurred_at_ms'));
+    assert.ok(!ev.includes('confidence') && !ev.includes('t_ms'));
+    assert.ok(cols(db, 'v_frame_latency').includes('rtt_ms'));
+    assert.equal(db.prepare("SELECT COUNT(*) FROM devices WHERE store_id IS NULL").pluck().get(), 0);
+    assert.equal(db.prepare("SELECT weight_g FROM products WHERE class_name = 'lay_party_ori'").pluck().get(), 105);
+  });
+
+  it('allows one current price per product and store, NULL store meaning all stores', async () => {
+    const db = await freshDb();
+    const store = db.prepare('SELECT store_id FROM stores').pluck().get();
+    const add = db.prepare('INSERT INTO product_prices (product_id, store_id, price, valid_from_ms) VALUES (1, ?, 30, 1)');
+    add.run(store);                                    // store-specific price next to the all-store price
+    assert.throws(() => add.run(store), /UNIQUE/);     // second current price for the same store
+    assert.throws(() => add.run(null), /UNIQUE/);      // second all-store current price
+  });
+
+  it('counts only automatic events in v_product_abandon', async () => {
+    const db = await freshDb();
+    const cart = db.prepare("SELECT cart_id FROM carts WHERE label = 'A-02'").pluck().get();
+    db.prepare("INSERT INTO shopping_sessions (session_id, cart_id, started_at_ms) VALUES ('ab', ?, 1)").run(cart);
+    const pid = db.prepare("SELECT product_id FROM products WHERE class_name = 'lay_big_ori'").pluck().get();
+    const ev = db.prepare("INSERT INTO cart_events (session_id, event_type, product_id, qty_delta, source, occurred_at_ms) VALUES ('ab', ?, ?, ?, ?, 1)");
+    ev.run('ADD', pid, 2, 'auto');
+    ev.run('REMOVE', pid, -1, 'auto');
+    ev.run('REMOVE', pid, -1, 'staff');
+    const row = db.prepare('SELECT added, removed, abandon_rate FROM v_product_abandon WHERE product_id = ?').get(pid);
+    assert.deepEqual(row, { added: 2, removed: 1, abandon_rate: 0.5 });
   });
 });
