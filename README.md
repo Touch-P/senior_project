@@ -17,6 +17,20 @@ npx serve web
 - หน้าลูกค้า: `#/` (แสดงผลดีที่สุดบนจอกว้าง จะมีแผงจำลอง real-time ด้านขวา)
 - หน้า admin: `#/a/login` · บัญชีทดลอง `admin@smartcart.co.th` / `admin1234` และ `staff@smartcart.co.th` / `staff1234` (เป็นรหัสปลอมของ prototype เท่านั้น)
 
+## ติดตั้ง backend และฐานข้อมูล
+
+ต้องมี Node.js 22 ขึ้นไป (ไม่ต้องมี Visual Studio เพราะ native module ใช้ไฟล์ prebuilt ที่มากับแพ็กเกจ)
+
+```powershell
+Copy-Item .env.example .env   # แล้วแก้ ADMIN_PASSWORD และ SESSION_SECRET
+npm install
+npm run db:init               # สร้าง db/smartcart.db จาก db/migrations
+npm run db:seed               # สินค้า 20 รายการ, รถเข็น, โมเดล, บัญชี admin
+npm test
+```
+
+รายละเอียด schema: [docs/database.md](docs/database.md)
+
 ## สถานะปัจจุบัน
 
 - `v0.1.0-prototype` — clickable prototype (vanilla JS, hash router) ใช้ข้อมูลจำลองจาก `web/data.js` ยังไม่มี backend
