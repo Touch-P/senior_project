@@ -15,7 +15,8 @@
     "db:init": "node server/src/db/migrate.js",
     "db:seed": "node server/src/db/seed.js",
     "export:feedback": "node server/src/jobs/exportFeedback.js",
-    "export:latency": "node server/src/jobs/exportLatency.js"
+    "export:latency": "node server/src/jobs/exportLatency.js",
+    "db:erd": "node scripts/erd.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
