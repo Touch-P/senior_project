@@ -15,6 +15,7 @@ db/backups/
 data/frames/
 exports/
 *.log
+logs/
 
 # model weights and training artifacts (kept in SNP, never committed)
 *.pt

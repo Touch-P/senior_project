@@ -34,6 +34,11 @@ const schema = z.object({
   ADMIN_PASSWORD: z.string().min(1).default('change-me'),
   SESSION_SECRET: z.string().min(1).default('change-me'),
   DEV_STAFF_PASSWORD: z.string().min(1).default('staff1234'),
+  LOG_FILE: z.string().default('logs/server.log'),
+  LOGIN_MAX_ATTEMPTS: num(3),
+  LOGIN_LOCK_MS: num(5 * 60 * 1000),
+  SESSION_TTL_MS: num(12 * 60 * 60 * 1000),
+  SESSION_REMEMBER_MS: num(7 * 24 * 60 * 60 * 1000),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -52,6 +57,7 @@ export const config = Object.freeze({
   dbPath: fromRoot(env.DB_PATH),
   tlsCert: fromRoot(env.TLS_CERT),
   tlsKey: fromRoot(env.TLS_KEY),
+  logFile: env.LOG_FILE ? fromRoot(env.LOG_FILE) : null,
   migrationsDir: resolve(ROOT, 'db', 'migrations'),
   seedDir: resolve(ROOT, 'db', 'seed'),
   webDir: resolve(ROOT, 'web'),
