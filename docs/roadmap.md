@@ -7,7 +7,7 @@
 | 0 | — | เสร็จ |
 | 1 | `main`, `develop` | เสร็จ (`v0.1.0-prototype`) |
 | 2 | `chore/repo-structure`, `feature/db-schema`, `fix/schema-align-instruction` | เสร็จ |
-| 3 | `feature/backend-core` | กำลังทำ |
+| 3 | `feature/backend-core` | เสร็จ |
 | 4 | `feature/inference-service` | — |
 | 5 | `feature/phone-camera`, `feature/data-pipeline` | — |
 | 6 | `feature/cart-presence-reasons` | — |

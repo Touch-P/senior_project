@@ -34,6 +34,17 @@ npm test
 
 รายละเอียด schema และ ER diagram: [docs/database.md](docs/database.md)
 
+## รัน server (Phase 3)
+
+```powershell
+npm run dev        # รีสตาร์ทเองเมื่อแก้โค้ด · หรือ npm start
+```
+
+- ยังไม่มี cert (มาใน Phase 5): server รัน **HTTP เฉพาะ `http://localhost:8443`** ในโหมด development มือถือยังเข้าไม่ได้
+- มี `certs/lan.pem` + `certs/lan-key.pem`: รัน **HTTPS** ที่ `https://<IP เครื่อง>:8443` และพอร์ต 8080 redirect ไป HTTPS · cookie เป็น `Secure` อัตโนมัติ
+- log เป็น JSON ทั้งใน terminal และ `logs/server.log`
+- API และ WebSocket ทั้งหมด: [docs/api.md](docs/api.md)
+
 ### ทำไมมี `.npmrc` (`ignore-scripts=true`)
 
 better-sqlite3 13 และ bcrypt 6 มี native binary ที่ build ไว้แล้ว **ติดมาในแพ็กเกจที่ดาวน์โหลดจาก npm เลย**
@@ -58,7 +69,8 @@ better-sqlite3 13 และ bcrypt 6 มี native binary ที่ build ไว
 ## สถานะปัจจุบัน
 
 - `v0.1.0-prototype` — clickable prototype (vanilla JS, hash router) ใช้ข้อมูลจำลองจาก `web/data.js` ยังไม่มี backend
-- กำลังทำ: backend Node.js + SQLite, inference service (Python/Ultralytics), data pipeline และใช้มือถือเป็นกล้องผ่าน Wi-Fi
+- Phase 3: server Node.js (Express + ws) — login/สิทธิ์ admin·staff ที่ server, REST session/รถเข็น/โมเดล/alert/analytics, WebSocket admin/display/device (UI ยังใช้ข้อมูลจำลองจนถึง Phase 8)
+- ถัดไป: inference service (Python/Ultralytics), data pipeline และใช้มือถือเป็นกล้องผ่าน Wi-Fi — ดู [docs/roadmap.md](docs/roadmap.md)
 
 ## Branch
 
