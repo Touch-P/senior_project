@@ -32,6 +32,8 @@ const schema = z.object({
   WEIGHTS_ROOT: z.string().default('C:/Users/Acer/Desktop/SNP'),
   CONF_THRESHOLD: num(0.7),
   TRACKER_MODE: z.enum(['frame', 'window', 'bytetrack']).default('window'),
+  // presence + exit evidence + reason engine (brief 7); false = plain count changes for the RQ4 baseline
+  PRESENCE_RULES: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   FRAME_QUEUE_MAX: num(2),
   INFER_CONCURRENCY: num(1),
   WRITER_FLUSH_MS: num(1000),

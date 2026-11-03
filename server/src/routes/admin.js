@@ -5,6 +5,7 @@ import { HttpError, parse } from '../http/errors.js';
 import { cartSnapshot } from '../services/cart.js';
 import { issueDeviceToken } from '../services/devices.js';
 import { activateModel, pick } from '../services/models.js';
+import { REASON_LABELS } from '../pipeline/reasons.js';
 import { routes } from './registry.js';
 
 const BASE = '/api/admin';
@@ -51,7 +52,10 @@ export function adminRoutes({ db, hub, inference, log }) {
   r.get('/carts/:label', (req, res) => {
     const c = db.prepare('SELECT * FROM carts WHERE label = ?').get(parse(Label, req.params.label));
     if (!c) throw new HttpError(404, 'CART_NOT_FOUND', 'ไม่พบรถเข็น');
-    res.json(cartRow(c));
+    const row = cartRow(c);
+    // Live detail: hidden units (dashed box at last_box) and the reasons of the running session
+    if (row.session) Object.assign(row.session, { presence: currentPresence(row.session.session_id), reasons: sessionReasons(row.session.session_id) });
+    res.json(row);
   });
 
   r.admin('put', '/carts/:label/roi', (req, res) => {
@@ -98,8 +102,21 @@ export function adminRoutes({ db, hub, inference, log }) {
       FROM cart_events e LEFT JOIN products p USING (product_id) LEFT JOIN frames f ON f.frame_id = e.frame_id
       WHERE e.session_id = ? ORDER BY e.occurred_at_ms, e.event_id`).all(sessionId);
     const s = db.prepare('SELECT total_auto, total_checkout, ended_at_ms, checkout_code FROM shopping_sessions WHERE session_id = ?').get(sessionId);
-    res.json({ ...snap, ...s, events });
+    res.json({ ...snap, ...s, events, reasons: sessionReasons(sessionId), presence: currentPresence(sessionId) });
   });
+
+  // reasons and per-unit presence (Phase 6) for the Live detail and the Sessions timeline
+  const reasonRows = db.prepare(`SELECT r.reason_id, r.reason_code, r.status, r.qty_before, r.qty_after, r.price_delta, r.dwell_ms,
+      r.gap_ms, r.decided_at_ms, r.remove_event_id, r.add_event_id, pf.class_name AS from_class, pf.name_th AS from_name,
+      pt.class_name AS to_class, pt.name_th AS to_name
+    FROM change_reasons r LEFT JOIN products pf ON pf.product_id = r.from_product_id LEFT JOIN products pt ON pt.product_id = r.to_product_id
+    WHERE r.session_id = ? ORDER BY r.decided_at_ms, r.reason_id`);
+  const sessionReasons = (sessionId) => reasonRows.all(sessionId).map((r) => ({ ...r, label_th: REASON_LABELS[r.reason_code].th, tone: REASON_LABELS[r.reason_code].tone }));
+  const presenceRows = db.prepare(`SELECT p.class_name, c.unit_no, c.state, c.change_cause, c.last_box, c.last_seen_ms, c.valid_from_ms,
+      o.class_name AS occluded_by
+    FROM cart_item_presence c JOIN products p USING (product_id) LEFT JOIN products o ON o.product_id = c.occluded_by_product_id
+    WHERE c.session_id = ? AND c.is_current = 1 AND c.state != 'REMOVED' ORDER BY p.class_name, c.unit_no`);
+  const currentPresence = (sessionId) => presenceRows.all(sessionId).map((p) => ({ ...p, last_box: p.last_box ? JSON.parse(p.last_box) : null }));
 
   // ---------------------------------------------------------------- models
   r.get('/models', (req, res) => {
@@ -161,6 +178,22 @@ export function adminRoutes({ db, hub, inference, log }) {
       FROM v_cooccurrence v JOIN products pa ON pa.product_id = v.product_a JOIN products pb ON pb.product_id = v.product_b
       WHERE v.support >= ? ORDER BY v.lift DESC, v.sessions_together DESC LIMIT 100`).all(q.min_support);
     res.json({ pairs: rows });
+  });
+
+  // change reasons (brief 7.6 dashboard card): count per reason + most frequent from -> to pairs
+  r.get('/analytics/reasons', (req, res) => {
+    const q = parse(z.object({ from: z.coerce.number().int().optional(), to: z.coerce.number().int().optional() }), req.query);
+    const from = q.from ?? 0, to = q.to ?? Date.now() + 1;
+    const summary = db.prepare(`SELECT reason_code, COUNT(*) AS n, ROUND(AVG(dwell_ms) / 1000.0, 1) AS avg_dwell_s,
+        ROUND(AVG(price_delta), 2) AS avg_price_delta
+      FROM change_reasons WHERE status = 'final' AND decided_at_ms >= ? AND decided_at_ms < ? GROUP BY reason_code ORDER BY n DESC`).all(from, to)
+      .map((r) => ({ ...r, label_th: REASON_LABELS[r.reason_code].th, tone: REASON_LABELS[r.reason_code].tone }));
+    const pairs = db.prepare(`SELECT r.reason_code, pf.class_name AS from_class, pf.name_th AS from_name, pt.class_name AS to_class,
+        pt.name_th AS to_name, COUNT(*) AS n, ROUND(AVG(r.price_delta), 2) AS avg_price_delta
+      FROM change_reasons r JOIN products pf ON pf.product_id = r.from_product_id JOIN products pt ON pt.product_id = r.to_product_id
+      WHERE r.status = 'final' AND r.to_product_id != r.from_product_id AND r.decided_at_ms >= ? AND r.decided_at_ms < ?
+      GROUP BY r.reason_code, r.from_product_id, r.to_product_id ORDER BY n DESC LIMIT 20`).all(from, to);
+    res.json({ summary, pairs });
   });
 
   // ---------------------------------------------------------------- latency (instruction 2.6 / 3.3)

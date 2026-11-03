@@ -20,10 +20,11 @@
     "inference": "uv run --directory inference --frozen python app.py",
     "inference:test": "uv run --directory inference --frozen pytest -q",
     "infer:probe": "node scripts/infer-probe.js",
-    "scenarios": "node scripts/make-scenarios.js",
+    "scenarios": "node scripts/make-scenarios.js && node scripts/make-reason-scenarios.js",
     "loadtest": "node scripts/load-test.js",
     "device-link": "node scripts/device-link.js",
-    "lan-https": "powershell -ExecutionPolicy Bypass -File scripts/lan-https.ps1"
+    "lan-https": "powershell -ExecutionPolicy Bypass -File scripts/lan-https.ps1",
+    "rq4": "node scripts/rq4-tracker-modes.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
