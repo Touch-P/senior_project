@@ -36,6 +36,7 @@ Server เดียว (`npm run dev` / `npm start`) ให้บริการ
 | POST | `/api/auth/login` | — | `{email, password, remember?}` → `{user}` + cookie |
 | POST | `/api/auth/logout` | — | ลบ session → 204 |
 | GET | `/api/auth/me` | login | ผู้ใช้ปัจจุบัน |
+| GET | `/api/auth/status` | — | เหมือน `/me` แต่ตอบ 200 `{user:null}` เมื่อยังไม่ login (หน้าที่แค่ปรับตาม role เช่น `device.html`) |
 | POST | `/api/sessions` | — | `{qr}` หรือ `{cart: "A-07"}` → 201 `{session_id, cart, store, started_at_ms, display_ws}` |
 | GET | `/api/sessions/:id` | — | `cart_update` ล่าสุด (ใช้ตอน reconnect) |
 | PATCH | `/api/sessions/:id` | — | `{pdpa_consent?, gender?, age_range?}` — แบบสอบถามต้องยินยอม PDPA ก่อน |
@@ -66,7 +67,7 @@ route ค้นหา/แก้สินค้า (`/api/admin/products/*`) ม�
 | --- | --- | --- |
 | `/ws/admin` | cookie login (admin/staff) + Origin | server → `hello`, `live_update`, `cart_event`, `alert`, `alert_ack`, `model_changed`, `roi_changed`, `device_status`, `inference_status`, เฟรม binary ของรถเข็นที่ watch · client → `{"type":"watch","cart":"A-07"}` / `{"type":"watch","cart":null}` |
 | `/ws/display/{session_id}` | session id (UUID) | server → `cart_update` ทันทีที่ต่อ และทุกครั้งที่รายการเปลี่ยน / ปิด session |
-| `/ws/device/{cart}?token=` | device token | มือถือ → เฟรม binary, `hello` (`camera_desc`, `app_version`), `ping`; server → `ack`, `processed`, `pong`, `roi_changed` |
+| `/ws/device/{cart}?token=` | device token | มือถือ → เฟรม binary, `hello` (`camera_desc`, `app_version`), `ping`; server → `config` (ROI + มี session ไหม, ส่งทันทีที่ต่อ), `session` (`active` true/false), `ack`, `processed`, `pong`, `roi_changed` |
 
 - heartbeat: server ping ทุก 10 วินาที ตัด client ที่ไม่ตอบ · มือถือส่ง `{"type":"ping"}` ได้ → `pong`
 - กล้องต่อได้ 1 เครื่องต่อรถเข็น เครื่องใหม่แทนที่เครื่องเก่า (ปิดด้วย code 4000)
