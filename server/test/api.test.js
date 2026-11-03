@@ -82,7 +82,7 @@ describe('roles', () => {
     assert.equal((await staff.login(STAFF)).status, 200);
     for (const route of adminOnlyRoutes) {
       const [method, path] = route.split(' ');
-      const res = await staff.call(method, sample(path), bodies[route] ?? {});
+      const res = await staff.call(method, sample(path), bodies[route] ?? (method === 'GET' ? undefined : {}));
       assert.equal(res.status, 403, `${route} -> ${res.status}`);
       assert.equal(res.json.error, 'FORBIDDEN');
     }
@@ -93,7 +93,7 @@ describe('roles', () => {
     await admin.login(ADMIN);
     for (const route of adminOnlyRoutes) {
       const [method, path] = route.split(' ');
-      const res = await admin.call(method, sample(path), bodies[route] ?? {});
+      const res = await admin.call(method, sample(path), bodies[route] ?? (method === 'GET' ? undefined : {}));
       assert.ok(![401, 403].includes(res.status), `${route} -> ${res.status}`);
     }
     // the loop activated another model; restore the default for later tests
