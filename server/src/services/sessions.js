@@ -86,6 +86,8 @@ export function issueSummary(db, sessionId) {
 export function closeSession(db, hub, sessionId, { totalCheckout = null, userId = null, status = 'checked_out' } = {}) {
   const s = getSession(db, sessionId);
   requireActive(s);
+  // let the pipeline finalize pending decisions (presence / reasons) before the totals are taken
+  hub.events?.emit('session_closing', { sessionId, cartId: s.cart_id, cart: s.cart, status });
   const snap = cartSnapshot(db, sessionId);
   const now = Date.now();
   const eventType = { checked_out: 'CHECKOUT', abandoned: 'ABANDONED', timeout: 'TIMEOUT' }[status];

@@ -49,6 +49,7 @@ function sameOrigin(req) {
 export function attachWebSockets(server, { db, hub, log, onFrame = () => {} }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
   const touchDevice = db.prepare('UPDATE devices SET last_seen_ms = ?, user_agent = COALESCE(?, user_agent) WHERE device_id = ?');
+  const setDeviceInfo = db.prepare('UPDATE devices SET camera_desc = COALESCE(?, camera_desc), app_version = COALESCE(?, app_version) WHERE device_id = ?');
 
   server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url, 'http://x');
@@ -62,6 +63,12 @@ export function attachWebSockets(server, { db, hub, log, onFrame = () => {} }) {
       return wss.handleUpgrade(req, socket, head, (client) => {
         hub.addAdmin(client);
         client.send(JSON.stringify({ type: 'hello', role: user.role, server_ts: Date.now() }));
+        client.on('message', (data, isBinary) => {
+          if (isBinary) return;
+          let msg; try { msg = JSON.parse(data.toString()); } catch { return; }
+          if (msg.type === 'watch') hub.watch(client, typeof msg.cart === 'string' && /^[A-Za-z]-\d{2}$/.test(msg.cart) ? msg.cart : null);
+          else if (msg.type === 'ping') client.send(JSON.stringify({ type: 'pong', server_ts: Date.now() }));
+        });
         watch(client);
       });
     }
@@ -91,6 +98,10 @@ export function attachWebSockets(server, { db, hub, log, onFrame = () => {} }) {
           if (!isBinary) {
             let msg; try { msg = JSON.parse(data.toString()); } catch { return; }
             if (msg.type === 'ping') client.send(JSON.stringify({ type: 'pong', server_ts: tReceivedMs }));
+            // device.html describes itself once per connection (stored for the experiment log, instruction part 3)
+            if (msg.type === 'hello') {
+              setDeviceInfo.run(String(msg.camera_desc ?? '').slice(0, 200) || null, String(msg.app_version ?? '').slice(0, 50) || null, device.device_id);
+            }
             return;
           }
           const frame = parseFrameMessage(data);

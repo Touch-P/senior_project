@@ -1,4 +1,5 @@
 // In-process registry of WebSocket clients and the publish helpers used by routes and the pipeline.
+import { EventEmitter } from 'node:events';
 import { WebSocket } from 'ws';
 
 /**
@@ -16,14 +17,33 @@ export function createHub() {
   const displays = new Map();
   /** @type {Map<string, WebSocket>} cart label -> camera socket (one per cart) */
   const devices = new Map();
+  /** @type {Map<string, Set<WebSocket>>} cart label -> admin sockets watching its camera (Live detail) */
+  const watchers = new Map();
+  /** in-process events between services and the pipeline: session_closing, feedback */
+  const events = new EventEmitter();
 
   const send = (ws, msg) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
   };
 
   return {
-    admins, displays, devices,
-    addAdmin(ws) { admins.add(ws); ws.once('close', () => admins.delete(ws)); },
+    admins, displays, devices, watchers, events,
+    addAdmin(ws) {
+      admins.add(ws);
+      ws.once('close', () => { admins.delete(ws); for (const set of watchers.values()) set.delete(ws); });
+    },
+    /** An admin opened (cart) or left (null) the Live detail of a cart; one cart per socket. */
+    watch(ws, cart) {
+      for (const [label, set] of watchers) { set.delete(ws); if (!set.size) watchers.delete(label); }
+      if (!cart) return;
+      if (!watchers.has(cart)) watchers.set(cart, new Set());
+      watchers.get(cart).add(ws);
+    },
+    isWatched: (cart) => (watchers.get(cart)?.size ?? 0) > 0,
+    /** Binary camera frame (JSON header + newline + JPEG) to the admins watching this cart. */
+    toWatchers(cart, buf) {
+      for (const ws of watchers.get(cart) ?? []) if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 1_000_000) ws.send(buf);
+    },
     addDisplay(sessionId, ws) {
       if (!displays.has(sessionId)) displays.set(sessionId, new Set());
       displays.get(sessionId).add(ws);
@@ -47,6 +67,6 @@ export function createHub() {
       for (const ws of displays.get(sessionId) ?? []) ws.close(code, reason);
     },
     isDeviceConnected: (label) => devices.get(label)?.readyState === WebSocket.OPEN,
-    stats: () => ({ admins: admins.size, displays: [...displays.values()].reduce((n, s) => n + s.size, 0), devices: devices.size }),
+    stats: () => ({ watching: [...watchers.keys()], admins: admins.size, displays: [...displays.values()].reduce((n, s) => n + s.size, 0), devices: devices.size }),
   };
 }

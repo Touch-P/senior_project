@@ -11,6 +11,7 @@ import { openDb } from './db/connection.js';
 import { migrate } from './db/migrate.js';
 import { seed } from './db/seed.js';
 import { logger } from './logger.js';
+import { createPipeline } from './pipeline/index.js';
 import { createInference } from './pipeline/inferClient.js';
 import { syncActiveModel, watchInference } from './services/models.js';
 import { createHub } from './ws/hub.js';
@@ -31,7 +32,8 @@ async function main() {
   // inference follows the model active in the DB; class names come from the weights it loaded
   const sync = await syncActiveModel({ db, inference, log });
   const watcher = watchInference({ db, hub, inference, log });
-  const app = createApp({ db, hub, log, inference });
+  const pipeline = createPipeline({ db, hub, inference, log: log.child({ mod: 'pipeline' }), cfg: config });
+  const app = createApp({ db, hub, log, inference, pipeline });
   const hasTls = existsSync(config.tlsCert) && existsSync(config.tlsKey);
 
   let server, redirect = null, url;
@@ -53,7 +55,7 @@ async function main() {
     process.exit(1);
   }
 
-  const ws = attachWebSockets(server, { db, hub, log });
+  const ws = attachWebSockets(server, { db, hub, log, onFrame: pipeline.onFrame });
   server.on('listening', () => log.info({ url, https: hasTls, inference: inference.mode, inference_ok: sync.ok, model: sync.model }, `Smart Cart ready at ${url}`));
   server.on('error', (err) => { log.fatal({ err: err.message }, 'server failed to start'); process.exit(1); });
 
@@ -64,6 +66,7 @@ async function main() {
     log.info({ signal }, 'shutting down');
     clearInterval(purge);
     watcher.stop();
+    pipeline.stop();
     ws.close();
     redirect?.close();
     server.close(() => { db.close(); process.exit(0); });
