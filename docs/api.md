@@ -62,6 +62,19 @@ Server เดียว (`npm run dev` / `npm start`) ให้บริการ
 
 route ค้นหา/แก้สินค้า (`/api/admin/products/*`) มาใน Phase 7 และ `POST /api/metrics` มาใน Phase 5
 
+### สินค้า (admin เท่านั้น · brief หัวข้อ 8)
+
+ทุก route ผ่าน `r.admin()` staff ได้ 403 (test วนตรวจอัตโนมัติ) ทุกการแก้เขียน `product_audit` พร้อม `via` = `search_name` / `search_barcode` / `scan_camera` / `table` และส่ง `products_changed` ไป `/ws/admin`
+
+| Method | Path | ทำอะไร |
+| --- | --- | --- |
+| GET | `/api/admin/products/search?q=&barcode=` | ตัวเลข 8/12/13 หลัก → ค้นบาร์โค้ดตรงตัว + `checksum_ok` / `warning` / `barcode_not_found` · ข้อความ ≥ 3 ตัว → FTS5 trigram (`name_th`, `brand`, `class_name`, `sku`) · สั้นกว่า → `LIKE` (normalize: trim, ตัวเล็ก, ตัดช่องว่าง) · เรียง ตรงตัว > ขึ้นต้นด้วย > มีคำนั้น สูงสุด 20 |
+| GET | `/api/admin/products/:id` | รายละเอียด + `prices` (ประวัติ SCD2 พร้อมผู้แก้) + `audit` 30 รายการล่าสุด |
+| PATCH | `/api/admin/products/:id` | แก้ข้อมูล (ชื่อ, แบรนด์, product_line, flavor, variant, หมวด, `is_active` …) · `class_name` แก้ไม่ได้ถ้า `in_model=1` (409 `CLASS_NAME_LOCKED`) |
+| POST | `/api/admin/products/:id/prices` | `{price, promo_price?, valid_from_ms?}` ปิดแถวเดิม เปิดแถวใหม่ · ราคาโปร < ราคาปกติ · `valid_from` ในอนาคตรอไว้แล้วมีผลเองทุก 1 นาที · ของในรถเข็นแล้วใช้ราคาเดิม |
+| POST | `/api/admin/products/:id/barcode` | `{barcode}` ตัวเลข 8–14 หลัก · ซ้ำกับสินค้าอื่น → 409 `BARCODE_TAKEN` พร้อมสินค้าเจ้าของ |
+| POST | `/api/admin/products` | เพิ่มสินค้าใหม่ (`in_model=0` จนกว่าโมเดลจะรู้จัก label นี้) |
+
 ## WebSocket
 
 | Path | ยืนยันตัวตน | ทิศทาง |
