@@ -12,8 +12,8 @@
 | 5 | `feature/phone-camera`, `feature/data-pipeline` | เสร็จ ([pipeline.md](pipeline.md), [phone-camera.md](phone-camera.md)) — รอวัดด้วยมือถือจริง |
 | 6 | `feature/cart-presence-reasons` | เสร็จ ([presence-reasons.md](presence-reasons.md)) — UI ของเหตุผลต่อใน Phase 8 |
 | 7 | `feature/admin-product-search` | เสร็จ (`v0.3.0`) — ค้นหา/สแกน/แก้สินค้า, ZXing ใน `web/vendor/` |
-| 8 | `feature/ui-integration` | — |
-| 9 | `feature/data-pipeline` (batch jobs) | — |
+| 8 | `feature/ui-integration` | เสร็จ ([ui.md](ui.md)) — ทุกหน้าใช้ข้อมูลจริง, `?mock=1` = prototype, demo ไม่ต้องมีมือถือ |
+| 9 | `feature/batch-jobs` | เสร็จ (`v0.4.0`) — [jobs.md](jobs.md) |
 
 ## งานที่ต้องทำเพิ่มจาก instruction ภาค 2 ([instruction_part2.md](instruction_part2.md))
 
@@ -55,3 +55,16 @@ RQ4 เทียบ 3 แบบ วัดด้วย **cart accuracy** (สั�
 
 - คลาส `unknown_item` (instruction 4.4) — ต้อง train ใหม่ จึงอยู่นอกขอบเขตรอบนี้
 - crop ROI บนมือถือก่อนส่ง (instruction 4.6 / brief หัวข้อ 9) — ทำเป็นตัวเลือก ค่าเริ่มปิด
+
+## สิ่งที่ต้องทำด้วยมือ (ระบบทำแทนไม่ได้)
+
+| # | งาน | ทำไม | วิธี |
+| --- | --- | --- | --- |
+| 1 | ตั้ง `.env` | ตอนนี้ใช้ `ADMIN_PASSWORD` / `SESSION_SECRET` = `change-me` | `Copy-Item .env.example .env` แล้วแก้ |
+| 2 | Wi-Fi เป็น Private + เปิด firewall | Wi-Fi ของเครื่องเป็น **Public** มือถือเข้าไม่ได้ · ต้องใช้สิทธิ์ Administrator | `scriptsirewall.ps1 -SetPrivate` (Run as administrator) — [phone-camera.md](phone-camera.md) |
+| 3 | ติดตั้ง CA บนมือถือ | browser เปิดกล้องได้เฉพาะ HTTPS | `npm run lan-https` → สแกน QR → ติดตั้ง CA |
+| 4 | วัดผลด้วยมือถือจริง (DoD Phase 5) | ส่ง 4 fps, E2E p95 < 1 วินาที, ทิ้งเฟรม < 5% บน Wi-Fi จริง | `npm run device-link -- A-07` แล้วใช้ 5 นาที · query ใน phone-camera.md |
+| 5 | load test ซ้ำตอนปิดโปรแกรมที่ใช้ GPU | รอบแรกมี Roblox ใช้ GPU อยู่ ตัวเลขยังใช้ในบทที่ 4 ไม่ได้ | `npm run loadtest -- --carts 1,5,10,20 --seconds 60` — [pipeline.md](pipeline.md) |
+| 6 | ตรวจค่าที่ผมตัดสินใจเอง | threshold ★ และตาราง attribute (จุดหยุดข้อ 3/6) | [presence-reasons.md](presence-reasons.md) หัวข้อ ⚠ |
+| 7 | เติมข้อมูลสินค้า | ชื่อไทย 9 คลาสใหม่ (ร่างไว้), บาร์โค้ด Kirei ลาเวนเดอร์/พีช (ซ้ำกันใน xlsx), Babi Mild/Kirei ใช้แทนกันได้ไหม | แก้ `db/seed/products_master.csv` แล้ว `npm run db:seed` หรือแก้ในหน้า "สินค้าและราคา" |
+| 8 | RQ4 บนข้อมูลจริง | ตัวเลขตอนนี้มาจาก scenario สังเคราะห์ | บันทึก session จริง + นับของจริงเอง → `npm run rq4 -- --session <id>` |

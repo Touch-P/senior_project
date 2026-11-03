@@ -146,7 +146,9 @@ export function createMockInference({ scenarios, active, force = null, latencyMs
   const list = [...scenarios.values()];
   /** @type {Map<string, { name: string, i: number }>} */
   const cursors = new Map();
-  const pick = (cart) => (force ? scenarios.get(force) : null)
+  /** per-cart scenario chosen at runtime (demo panel) */
+  const override = new Map();
+  const pick = (cart) => (override.has(cart) ? scenarios.get(override.get(cart)) : null) ?? (force ? scenarios.get(force) : null)
     ?? list.find((s) => s.cart === cart) ?? list.find((s) => s.default) ?? list[0] ?? null;
   const state = newStatus('mock');
 
@@ -179,6 +181,16 @@ export function createMockInference({ scenarios, active, force = null, latencyMs
       return { model: name, names: null, load_ms: 0 }; // mock keeps the class names stored in model_versions
     },
     async resetTracks(cart) { return cursors.delete(cart); },
+    /** Demo: play `name` on this cart from its first frame (null = back to the default choice). */
+    setScenario(cart, name) {
+      if (name == null) { override.delete(cart); cursors.delete(cart); return null; }
+      const sc = scenarios.get(name);
+      if (!sc) throw Object.assign(new Error(`unknown scenario ${name}`), { code: 'SCENARIO_NOT_FOUND' });
+      override.set(cart, name);
+      cursors.delete(cart);
+      return sc;
+    },
+    scenarioList: () => list.map((s) => ({ name: s.name, description: s.description, frames: s.frames.length, seconds: Math.round(s.frames.length / s.fps) })),
     status: () => ({ ...state, ok: true, model: active()?.name ?? null, device: 'mock' }),
   };
 }

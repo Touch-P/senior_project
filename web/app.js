@@ -90,6 +90,7 @@ const C_SCREENS = [
   ['/c/summary', 'C-07 สรุปยอด + QR'], ['/c/error-qr', 'C-08 QR ไม่ถูกต้อง'], ['/c/error-busy', 'C-09 รถเข็นถูกใช้อยู่'],
 ];
 function protoPanel(path) {
+  if (!API.mock && typeof LiveCustomer !== 'undefined') return LiveCustomer.panel(path);
   const ctl = (act, label) => `<button class="btn btn-secondary btn-m btn-block" data-act="${act}">${label}</button>`;
   return `<aside class="proto-panel" aria-label="แผงควบคุม prototype">
     <div class="card"><span class="t-h3">หน้าจอลูกค้า</span>
@@ -334,7 +335,7 @@ function viewLogin() {
       <div class="row gap-12"><div class="mark">${ic('cart', 24)}</div><span class="t-h2">Smart Cart</span></div>
       <div class="col gap-16"><h1 style="font-size:36px;line-height:48px;margin:0">ระบบผู้ดูแลรถเข็นอัจฉริยะ</h1>
         <p class="t-body-l" style="margin:0;opacity:.85">ติดตามรถเข็นแบบเรียลไทม์ วิเคราะห์การหยิบเข้า–ออก และจัดการโมเดล YOLO กับราคาสินค้าในที่เดียว</p>
-        <div class="row wrap gap-12">${['mAP50-95 0.916', 'Latency p95 4.2 ms', '11 สินค้า', 'RTX 5090 benchmark'].map(s => `<span class="stat-chip">${s}</span>`).join('')}</div></div>
+        <div class="row wrap gap-12">${(API.mock ? ['mAP50-95 0.916', 'Latency p95 4.2 ms', '11 สินค้า', 'RTX 5090 benchmark'] : Live.statChips()).map(s => `<span class="stat-chip">${s}</span>`).join('')}</div></div>
       <span class="t-cap" style="opacity:.7">© 2026 Smart Cart YOLO Research · ภาค 2</span>
     </section>
     <section style="display:grid;place-items:center;padding:48px 16px">
@@ -560,10 +561,10 @@ function modelModal() {
   ];
   return `<div class="backdrop" data-act="modal-close-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mm-title">
     <div class="row"><span id="mm-title" class="t-h2 grow">${state.modelModal.rollback ? 'ยืนยันย้อนกลับโมเดล' : 'ยืนยันเปลี่ยนโมเดล'}</span><button class="icon-btn bare" data-act="modal-close" aria-label="ปิด">${ic('close')}</button></div>
-    <span class="muted">สลับจาก ${cur.name} → ${nx.name} สำหรับรถเข็นทุกคันในสาขาลาดพร้าว (active 6 คัน)</span>
+    <span class="muted">สลับจาก ${cur.name} → ${nx.name} สำหรับรถเข็นทุกคันในสาขาลาดพร้าว${API.mock ? ' (active 6 คัน)' : ''}</span>
     <table class="table"><thead><tr><th>ค่า</th><th class="r">ปัจจุบัน · ${cur.name.split('-')[0]}</th><th class="r">ใหม่ · ${nx.name.split('-')[0]}</th><th class="r">ส่วนต่าง</th></tr></thead>
       <tbody>${rows.map(r => `<tr><td>${r[0]}</td><td class="r num">${r[1]}</td><td class="r num">${r[2]}</td><td class="r">${r[3]}</td></tr>`).join('')}</tbody></table>
-    <div class="banner warn" style="margin:0">${ic('info', 20)}<span class="t-cap">ระหว่างสลับ (~20 วินาที) ระบบใช้โมเดลเดิมจน warm-up 50 เฟรมเสร็จ และย้อนกลับได้ทันทีจากหน้านี้</span></div>
+    <div class="banner warn" style="margin:0">${ic('info', 20)}<span class="t-cap">${API.mock ? 'ระหว่างสลับ (~20 วินาที) ระบบใช้โมเดลเดิมจน warm-up 50 เฟรมเสร็จ และย้อนกลับได้ทันทีจากหน้านี้' : 'inference โหลด weights และ warm-up ก่อน แล้วจึงสลับ ระหว่างนั้นรถเข็นยังใช้โมเดลเดิม ถ้าโหลดไม่ได้จะคงโมเดลเดิมไว้'}</span></div>
     <div class="row" style="justify-content:flex-end">${btn('secondary', 'm', 'ยกเลิก', 'data-act="modal-close"')}${btn('primary', 'm', state.modelModal.rollback ? 'ยืนยันย้อนกลับ' : 'ยืนยันเปลี่ยนโมเดล', 'data-act="model-confirm"')}</div>
   </div></div>`;
 }
@@ -710,7 +711,8 @@ function render() {
   const focus = document.activeElement && document.activeElement.id ? { id: document.activeElement.id, pos: document.activeElement.selectionStart } : null;
   if (p.startsWith('/a/') && p !== '/a/login' && !state.user) { location.replace('#/a/login'); return; }
   const m = p.match(/^\/a\/live\/(.+)$/);
-  $('#app').innerHTML = m ? viewLiveDetail(decodeURIComponent(m[1])) : (VIEWS[p] || viewRole)();
+  const detail = API.mock || typeof LiveAdmin === 'undefined' ? viewLiveDetail : LiveAdmin.viewLiveDetail;
+  $('#app').innerHTML = m ? detail(decodeURIComponent(m[1])) : (VIEWS[p] || viewRole)();
   if (focus) {
     const el = document.getElementById(focus.id);
     if (el && el !== document.activeElement && el.matches('input')) { el.focus(); try { if (focus.pos != null) el.setSelectionRange(focus.pos, focus.pos); } catch { /* not a text input */ } }
