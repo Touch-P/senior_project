@@ -20,7 +20,8 @@
     "inference": "uv run --directory inference --frozen python app.py",
     "inference:test": "uv run --directory inference --frozen pytest -q",
     "infer:probe": "node scripts/infer-probe.js",
-    "scenarios": "node scripts/make-scenarios.js"
+    "scenarios": "node scripts/make-scenarios.js",
+    "loadtest": "node scripts/load-test.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
