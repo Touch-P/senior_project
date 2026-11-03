@@ -39,8 +39,11 @@ export function errorHandler(log) {
     let code = err instanceof HttpError ? err.code : 'INTERNAL';
     if (err.type === 'entity.parse.failed') { status = 400; code = 'BAD_JSON'; }
     if (err.type === 'entity.too.large') { status = 413; code = 'TOO_LARGE'; }
-    if (status >= 500) log.error({ err, method: req.method, url: req.originalUrl }, 'request failed');
-    const message = status >= 500 ? 'เกิดข้อผิดพลาดในระบบ' : err.message;
+    // unexpected errors hide their message; deliberate HttpErrors (e.g. 503 INFERENCE_DOWN) keep their Thai text
+    const unexpected = status >= 500 && !(err instanceof HttpError);
+    if (unexpected) log.error({ err, method: req.method, url: req.originalUrl }, 'request failed');
+    else if (status >= 500) log.warn({ code, method: req.method, url: req.originalUrl }, err.message);
+    const message = unexpected ? 'เกิดข้อผิดพลาดในระบบ' : err.message;
     if (res.headersSent) return;
     res.status(status).json({ error: code, message, ...(err.extra ?? {}) });
   };

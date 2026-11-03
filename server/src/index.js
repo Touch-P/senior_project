@@ -11,6 +11,8 @@ import { openDb } from './db/connection.js';
 import { migrate } from './db/migrate.js';
 import { seed } from './db/seed.js';
 import { logger } from './logger.js';
+import { createInference } from './pipeline/inferClient.js';
+import { syncActiveModel, watchInference } from './services/models.js';
 import { createHub } from './ws/hub.js';
 import { attachWebSockets } from './ws/server.js';
 
@@ -19,13 +21,17 @@ const log = logger.child({ mod: 'server' });
 async function main() {
   const db = openDb();
   migrate(db);
-  await seed(db); // idempotent: product master + model coverage sync on every start
+  await seed(db, { probeInference: false }); // idempotent: product master, carts, models, users on every start
   if (config.ADMIN_PASSWORD === 'change-me' || config.SESSION_SECRET === 'change-me') {
     log.warn('ADMIN_PASSWORD / SESSION_SECRET are still "change-me" — set them in .env');
   }
 
   const hub = createHub();
-  const app = createApp({ db, hub, log });
+  const inference = createInference(config, db);
+  // inference follows the model active in the DB; class names come from the weights it loaded
+  const sync = await syncActiveModel({ db, inference, log });
+  const watcher = watchInference({ db, hub, inference, log });
+  const app = createApp({ db, hub, log, inference });
   const hasTls = existsSync(config.tlsCert) && existsSync(config.tlsKey);
 
   let server, redirect = null, url;
@@ -48,7 +54,7 @@ async function main() {
   }
 
   const ws = attachWebSockets(server, { db, hub, log });
-  server.on('listening', () => log.info({ url, https: hasTls, inference: config.INFERENCE_MODE }, `Smart Cart ready at ${url}`));
+  server.on('listening', () => log.info({ url, https: hasTls, inference: inference.mode, inference_ok: sync.ok, model: sync.model }, `Smart Cart ready at ${url}`));
   server.on('error', (err) => { log.fatal({ err: err.message }, 'server failed to start'); process.exit(1); });
 
   const purge = setInterval(() => purgeExpiredSessions(db), 60 * 60 * 1000);
@@ -57,6 +63,7 @@ async function main() {
   const shutdown = (signal) => {
     log.info({ signal }, 'shutting down');
     clearInterval(purge);
+    watcher.stop();
     ws.close();
     redirect?.close();
     server.close(() => { db.close(); process.exit(0); });
