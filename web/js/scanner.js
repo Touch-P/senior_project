@@ -20,11 +20,11 @@ const Scanner = (() => {
     });
   }
 
-  async function nativeDetector() {
+  async function nativeDetector(wanted) {
     if (!('BarcodeDetector' in window)) return null;
     try {
       const supported = await window.BarcodeDetector.getSupportedFormats();
-      const formats = FORMATS.filter((f) => supported.includes(f));
+      const formats = wanted.filter((f) => supported.includes(f));
       return formats.length ? new window.BarcodeDetector({ formats }) : null;
     } catch { return null; }
   }
@@ -33,8 +33,9 @@ const Scanner = (() => {
    * @param {HTMLVideoElement} video
    * @param {(code: string, engine: string) => void} onCode called once with the confirmed value
    * @param {(message: string) => void} onError
+   * @param {{ formats?: string[] }} [opts] e.g. ['qr_code'] for the cart QR on the customer screen
    */
-  async function start(video, onCode, onError) {
+  async function start(video, onCode, onError, { formats = FORMATS } = {}) {
     stop();
     stopped = false;
     if (!window.isSecureContext) return onError('กล้องใช้ได้เฉพาะหน้า https:// หรือ localhost');
@@ -56,7 +57,7 @@ const Scanner = (() => {
       onCode(value, engine);
     };
 
-    const detector = await nativeDetector();
+    const detector = await nativeDetector(formats);
     if (detector) {
       timer = setInterval(async () => {
         if (stopped || video.readyState < 2) return;

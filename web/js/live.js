@@ -11,7 +11,8 @@ const Live = (() => {
     try {
       const [status, meta] = await Promise.all([API.get('/api/auth/status'), API.get('/api/meta')]);
       L.meta = meta;
-      if (status.user) { state.user = status.user; API.startLive(); }
+      if (status.user) { state.user = status.user; API.startLive(); LiveAdmin.loadAlerts().catch(() => {}); }
+      await LiveCustomer.boot();
     } catch (err) {
       toast('danger', `เชื่อมต่อ server ไม่ได้ · เปิด ?mock=1 เพื่อใช้ข้อมูลตัวอย่าง (${err.message})`);
     }
@@ -25,6 +26,7 @@ const Live = (() => {
       const { user } = await API.post('/api/auth/login', { email: state.loginEmail.trim(), password: state.loginPw, remember });
       state.user = user; state.loginErr = false; state.attempts = 3; state.loginPw = ''; state.loginLockedUntil = null;
       API.startLive();
+      LiveAdmin.loadAlerts().catch(() => {});
       go('#/a/dashboard');
       toast('success', `ยินดีต้อนรับ ${user.name} (${user.role})`);
     } catch (err) {
@@ -59,5 +61,16 @@ const Live = (() => {
     if (r === 'admin') document.getElementById('pw')?.focus();
   };
 
-  return { boot, login, logout, demoAccounts, get meta() { return L.meta; } };
+  async function refreshMeta() {
+    try { L.meta = await API.get('/api/meta'); } catch { /* keep the old one */ }
+  }
+
+  /** Login page chips from the server instead of the prototype's fixed numbers (brief 10). */
+  function statChips() {
+    const m = L.meta?.active_model;
+    return [m ? `mAP50-95 ${m.map50_95.toFixed(3)}` : 'mAP50-95 —', m?.latency_p95_ms ? `Latency p95 ${m.latency_p95_ms} ms` : 'Latency p95 —',
+      `${L.meta?.products ?? '—'} สินค้า · โมเดลรู้จัก ${L.meta?.products_in_model ?? '—'}`, 'RTX 5090 benchmark'];
+  }
+
+  return { boot, login, logout, demoAccounts, refreshMeta, statChips, get meta() { return L.meta; } };
 })();

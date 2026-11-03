@@ -1,10 +1,12 @@
 // Admin console API under /api/admin (login required; admin-only routes use r.admin()).
 import { Router } from 'express';
+import { relative, resolve, sep } from 'node:path';
+import { config } from '../config.js';
 import { z } from 'zod';
 import { HttpError, parse } from '../http/errors.js';
 import { cartSnapshot } from '../services/cart.js';
 import { issueDeviceToken } from '../services/devices.js';
-import { activateModel, pick } from '../services/models.js';
+import { activateModel, pick, switchHistory } from '../services/models.js';
 import { REASON_LABELS } from '../pipeline/reasons.js';
 import { routes } from './registry.js';
 
@@ -19,6 +21,13 @@ export function percentile(values, p) {
   const v = values.filter((x) => x != null && Number.isFinite(x)).sort((a, b) => a - b);
   if (!v.length) return null;
   return v[Math.min(v.length - 1, Math.max(0, Math.ceil((p / 100) * v.length) - 1))];
+}
+
+/** frames.image_path (relative to the repo) -> URL under /frames (served from FRAMES_DIR to logged-in users only) */
+function frameUrl(imagePath) {
+  if (!imagePath) return null;
+  const rel = relative(config.framesDir, resolve(config.ROOT, imagePath)).split(sep).join('/');
+  return rel.startsWith('..') ? null : `/frames/${rel}`;
 }
 
 export function adminRoutes({ db, hub, inference, log }) {
@@ -102,6 +111,7 @@ export function adminRoutes({ db, hub, inference, log }) {
       FROM cart_events e LEFT JOIN products p USING (product_id) LEFT JOIN frames f ON f.frame_id = e.frame_id
       WHERE e.session_id = ? ORDER BY e.occurred_at_ms, e.event_id`).all(sessionId);
     const s = db.prepare('SELECT total_auto, total_checkout, ended_at_ms, checkout_code FROM shopping_sessions WHERE session_id = ?').get(sessionId);
+    for (const e of events) e.image_url = frameUrl(e.image_path);
     res.json({ ...snap, ...s, events, reasons: sessionReasons(sessionId), presence: currentPresence(sessionId) });
   });
 
@@ -123,7 +133,7 @@ export function adminRoutes({ db, hub, inference, log }) {
     const models = db.prepare(`SELECT name, family, size, format, imgsz, map50_95, latency_p95_ms, params, gflops,
         conf_threshold, is_active, activated_at FROM model_versions ORDER BY map50_95 DESC, latency_p95_ms`).all()
       .map((m) => ({ ...m, is_active: Boolean(m.is_active) }));
-    res.json({ models });
+    res.json({ models, history: switchHistory(db) });
   });
 
   r.admin('post', '/models/:name/activate', async (req, res) => {
@@ -180,6 +190,29 @@ export function adminRoutes({ db, hub, inference, log }) {
     res.json({ pairs: rows });
   });
 
+  // dashboard KPIs: today / 7 days / 30 days, compared with the period before (brief 10: no hard-coded numbers)
+  const RANGE_DAYS = [1, 7, 30];
+  r.get('/analytics/overview', (req, res) => {
+    const q = parse(z.object({ range: z.coerce.number().int().min(0).max(2).default(0) }), req.query);
+    const days = RANGE_DAYS[q.range];
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    const to = Date.now(), from = startOfToday.getTime() - (days - 1) * 86_400_000, prevFrom = from - days * 86_400_000;
+    const kpi = (a, b) => db.prepare(`SELECT COUNT(*) AS sessions, AVG(CASE WHEN status = 'checked_out' THEN total_auto END) AS avg_total,
+        AVG(CASE WHEN ended_at_ms IS NOT NULL THEN ended_at_ms - started_at_ms END) AS avg_duration_ms,
+        SUM(CASE WHEN status = 'checked_out' AND total_checkout IS NOT NULL THEN 1 ELSE 0 END) AS with_pos,
+        SUM(CASE WHEN status = 'checked_out' AND total_checkout IS NOT NULL AND ABS(total_checkout - total_auto) < 0.01 THEN 1 ELSE 0 END) AS pos_match
+      FROM shopping_sessions WHERE started_at_ms >= ? AND started_at_ms < ?`).get(a, b);
+    const cur = kpi(from, to), prev = kpi(prevFrom, from);
+    const acc = (k) => (k.with_pos ? k.pos_match / k.with_pos : null);
+    // sessions per hour of day (08-22), averaged over the days of the range
+    const hours = db.prepare(`SELECT CAST(strftime('%H', started_at_ms / 1000, 'unixepoch', 'localtime') AS INTEGER) AS h, COUNT(*) AS n
+      FROM shopping_sessions WHERE started_at_ms >= ? AND started_at_ms < ? GROUP BY h`).all(from, to);
+    const perHour = Array.from({ length: 15 }, (_, i) => Math.round(((hours.find((x) => x.h === i + 8)?.n ?? 0) / days) * 10) / 10);
+    const active = db.prepare("SELECT COUNT(*) FROM shopping_sessions WHERE status = 'active'").pluck().get();
+    res.json({ range: q.range, from, to, days, active_sessions: active,
+      current: { ...cur, cart_accuracy: acc(cur) }, previous: { ...prev, cart_accuracy: acc(prev) }, per_hour: perHour });
+  });
+
   // change reasons (brief 7.6 dashboard card): count per reason + most frequent from -> to pairs
   r.get('/analytics/reasons', (req, res) => {
     const q = parse(z.object({ from: z.coerce.number().int().optional(), to: z.coerce.number().int().optional() }), req.query);
@@ -207,7 +240,16 @@ export function adminRoutes({ db, hub, inference, log }) {
       return [k, { p50: percentile(v, 50), p95: percentile(v, 95), p99: percentile(v, 99), n: v.filter((x) => x != null).length }];
     }));
     const totals = db.prepare('SELECT COUNT(*) AS frames, SUM(dropped) AS dropped, SUM(error IS NOT NULL) AS errors FROM frames WHERE t_received_ms >= ?').get(since);
-    res.json({ window: q.window, frames: totals.frames, dropped: totals.dropped ?? 0, errors: totals.errors ?? 0, stages: stats });
+    // 24 buckets of p95 (E2E from the phone when measured, else server_total) for the chart
+    const span = WINDOWS[q.window] / 24;
+    const series = Array.from({ length: 24 }, (_, i) => {
+      const a = since + i * span, b = a + span;
+      const inB = rows.filter((x) => x.t_received_ms >= a && x.t_received_ms < b);
+      const e2e = inB.map((x) => x.e2e_ms).filter((v) => v != null);
+      return { t: a, p95: percentile(e2e.length ? e2e : inB.map((x) => x.server_total_ms), 95), n: inB.length, source: e2e.length ? 'e2e' : 'server' };
+    });
+    res.json({ window: q.window, frames: totals.frames, dropped: totals.dropped ?? 0, errors: totals.errors ?? 0, stages: stats, series,
+      carts: db.prepare('SELECT COUNT(DISTINCT cart_id) FROM frames WHERE t_received_ms >= ?').pluck().get(since) });
   });
 
   return router;

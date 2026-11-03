@@ -9,6 +9,8 @@ import { authRoutes } from './routes/auth.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { metricsRoutes } from './routes/metrics.js';
 import { productRoutes } from './routes/products.js';
+import { demoRoutes } from './routes/demo.js';
+import { createDemoFeeder } from './pipeline/demoFeeder.js';
 import { sessionRoutes } from './routes/sessions.js';
 
 const started = Date.now();
@@ -18,7 +20,7 @@ const started = Date.now();
  *           inference: ReturnType<typeof import('./pipeline/inferClient.js').createInference>,
  *           pipeline?: ReturnType<typeof import('./pipeline/index.js').createPipeline> }} deps
  */
-export function createApp({ db, hub, log, inference, pipeline }) {
+export function createApp({ db, hub, log, inference, pipeline, demo = pipeline ? createDemoFeeder({ db, hub, inference, pipeline }) : null }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(securityHeaders);
@@ -39,16 +41,19 @@ export function createApp({ db, hub, log, inference, pipeline }) {
     const counts = db.prepare('SELECT COUNT(*) AS products, SUM(in_model) AS in_model FROM products WHERE is_active = 1').get();
     const model = db.prepare('SELECT name, map50_95, latency_p95_ms, conf_threshold FROM model_versions WHERE is_active = 1').get() ?? null;
     res.json({ store, products: counts.products, products_in_model: counts.in_model ?? 0, active_model: model,
-      demo_accounts: config.NODE_ENV === 'development' });
+      demo_accounts: config.NODE_ENV === 'development', demo_scenarios: Boolean(demo?.enabled) });
   });
   api.use('/auth', authRoutes({ db, log }));
   api.use('/sessions', sessionRoutes({ db, hub }));
+  api.use('/demo', demoRoutes({ demo }));
   api.use('/products', requireAuth, catalogRoutes({ db }));
   api.use('/admin/products', requireAuth, productRoutes({ db, hub }));
   api.use('/admin', requireAuth, adminRoutes({ db, hub, inference, log }));
   api.use((req, res, next) => next(new HttpError(404, 'NOT_FOUND', `ไม่พบ ${req.method} ${req.originalUrl}`)));
   app.use('/api', api);
 
+  // evidence frames (data/frames) are shown on the Sessions timeline: login required, never public
+  app.use('/frames', loadUser(db), requireAuth, express.static(config.framesDir, { fallthrough: false, maxAge: '1d' }));
   app.use(express.static(config.webDir, { index: 'index.html', maxAge: config.isDev ? 0 : '1h' }));
   app.use(errorHandler(log));
   return app;
