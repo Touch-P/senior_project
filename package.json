@@ -14,8 +14,8 @@
     "test": "node --test \"server/test/**/*.test.js\"",
     "db:init": "node server/src/db/migrate.js",
     "db:seed": "node server/src/db/seed.js",
-    "export:feedback": "node server/src/jobs/exportFeedback.js",
-    "export:latency": "node server/src/jobs/exportLatency.js",
+    "export:feedback": "node scripts/job.js export-feedback",
+    "export:latency": "node scripts/job.js export-latency",
     "db:erd": "node scripts/erd.js",
     "inference": "uv run --directory inference --frozen python app.py",
     "inference:test": "uv run --directory inference --frozen pytest -q",
@@ -24,7 +24,10 @@
     "loadtest": "node scripts/load-test.js",
     "device-link": "node scripts/device-link.js",
     "lan-https": "powershell -ExecutionPolicy Bypass -File scripts/lan-https.ps1",
-    "rq4": "node scripts/rq4-tracker-modes.js"
+    "rq4": "node scripts/rq4-tracker-modes.js",
+    "job": "node scripts/job.js",
+    "db:backup": "node scripts/job.js backup",
+    "db:restore": "node scripts/db-restore.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

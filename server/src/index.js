@@ -16,6 +16,7 @@ import { createPipeline } from './pipeline/index.js';
 import { createInference } from './pipeline/inferClient.js';
 import { syncActiveModel, watchInference } from './services/models.js';
 import { promoteDuePrices } from './services/products.js';
+import { startScheduler } from './jobs/scheduler.js';
 import { createHub } from './ws/hub.js';
 import { attachWebSockets } from './ws/server.js';
 
@@ -57,7 +58,7 @@ async function main() {
     server = http.createServer(app);
     server.listen(config.PORT, '127.0.0.1');
     url = `http://localhost:${config.PORT}`;
-    log.warn({ cert: config.tlsCert }, 'no TLS certificate: HTTP on 127.0.0.1 only (phones cannot connect until Phase 5: scripts/lan-https.ps1)');
+    log.warn({ cert: config.tlsCert }, 'no TLS certificate: HTTP on 127.0.0.1 only (phones need HTTPS: npm run lan-https)');
   } else {
     log.fatal({ cert: config.tlsCert, key: config.tlsKey }, 'TLS certificate not found; refusing to start without HTTPS outside development');
     process.exit(1);
@@ -68,6 +69,7 @@ async function main() {
   server.on('error', (err) => { log.fatal({ err: err.message }, 'server failed to start'); process.exit(1); });
 
   const purge = setInterval(() => purgeExpiredSessions(db), 60 * 60 * 1000);
+  const jobs = config.JOBS === 'on' ? startScheduler({ db, hub, cfg: config, log: log.child({ mod: 'jobs' }) }) : { stop() {} };
   // future-dated prices become current when their valid_from passes
   const prices = setInterval(() => promoteDuePrices(db), 60 * 1000);
   prices.unref();
@@ -77,6 +79,7 @@ async function main() {
     log.info({ signal }, 'shutting down');
     clearInterval(purge);
     clearInterval(prices);
+    jobs.stop();
     watcher.stop();
     pipeline.stop();
     ws.close();

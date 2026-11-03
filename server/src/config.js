@@ -42,6 +42,13 @@ const schema = z.object({
   HIGH_LATENCY_MS: num(300),
   INFERENCE_DOWN_AFTER: num(5),
   FRAMES_DIR: z.string().default('data/frames'),
+  // batch jobs (brief section 5)
+  SESSION_IDLE_MS: num(30 * 60_000),
+  RETENTION_DAYS: num(30),
+  BACKUP_DIR: z.string().default('db/backups'),
+  BACKUP_KEEP: num(7),
+  EXPORT_DIR: z.string().default('exports'),
+  JOBS: z.enum(['on', 'off']).default('on'),
   TRACKER_WINDOW: num(8),
   TRACKER_ADD_K: num(3),
   REASON_PAIR_WINDOW_MS: num(60000),
@@ -77,6 +84,8 @@ export const config = Object.freeze({
   seedDir: resolve(ROOT, 'db', 'seed'),
   scenariosDir: resolve(ROOT, 'server', 'test', 'scenarios'),
   framesDir: fromRoot(env.FRAMES_DIR),
+  backupDir: fromRoot(env.BACKUP_DIR),
+  exportDir: fromRoot(env.EXPORT_DIR),
   ROOT,
   webDir: resolve(ROOT, 'web'),
 });

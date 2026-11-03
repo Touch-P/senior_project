@@ -27,3 +27,6 @@ datasets/
 
 # Ultralytics settings kept inside the repo (inference/app.py sets YOLO_CONFIG_DIR)
 inference/.ultralytics/
+
+# scratch folders of the batch-job tests
+db/_test-*/
