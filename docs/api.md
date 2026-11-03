@@ -57,6 +57,7 @@ Server เดียว (`npm run dev` / `npm start`) ให้บริการ
 | POST | `/api/admin/alerts/:id/ack` | login | รับทราบ alert |
 | GET | `/api/admin/analytics/abandon?from=&to=` | login | อัตราเปลี่ยนใจต่อสินค้า (เฉพาะ event `auto`, เวลาเป็น epoch ms) |
 | GET | `/api/admin/analytics/cooccurrence?min_support=` | login | คู่สินค้า + support + lift |
+| GET | `/api/admin/analytics/reasons?from=&to=` | login | สรุปเหตุผล final ต่อ reason_code (จำนวน, dwell เฉลี่ย, ส่วนต่างราคาเฉลี่ย) + 20 คู่ จาก → ไป ที่พบบ่อย |
 | GET | `/api/admin/latency?window=1h\|24h\|7d` | login | p50/p95/p99 ต่อช่วง + จำนวนเฟรม / ทิ้ง / error |
 
 route ค้นหา/แก้สินค้า (`/api/admin/products/*`) มาใน Phase 7 และ `POST /api/metrics` มาใน Phase 5
@@ -65,7 +66,7 @@ route ค้นหา/แก้สินค้า (`/api/admin/products/*`) ม�
 
 | Path | ยืนยันตัวตน | ทิศทาง |
 | --- | --- | --- |
-| `/ws/admin` | cookie login (admin/staff) + Origin | server → `hello`, `live_update`, `cart_event`, `alert`, `alert_ack`, `model_changed`, `roi_changed`, `device_status`, `inference_status`, เฟรม binary ของรถเข็นที่ watch · client → `{"type":"watch","cart":"A-07"}` / `{"type":"watch","cart":null}` |
+| `/ws/admin` | cookie login (admin/staff) + Origin | server → `hello`, `live_update`, `cart_event`, `change_reason`, `presence`, `alert`, `alert_ack`, `model_changed`, `roi_changed`, `device_status`, `inference_status`, เฟรม binary ของรถเข็นที่ watch · client → `{"type":"watch","cart":"A-07"}` / `{"type":"watch","cart":null}` |
 | `/ws/display/{session_id}` | session id (UUID) | server → `cart_update` ทันทีที่ต่อ และทุกครั้งที่รายการเปลี่ยน / ปิด session |
 | `/ws/device/{cart}?token=` | device token | มือถือ → เฟรม binary, `hello` (`camera_desc`, `app_version`), `ping`; server → `config` (ROI + มี session ไหม, ส่งทันทีที่ต่อ), `session` (`active` true/false), `ack`, `processed`, `pong`, `roi_changed` |
 
@@ -92,6 +93,17 @@ route ค้นหา/แก้สินค้า (`/api/admin/products/*`) ม�
 ` + JPEG — ไม่มี session ก็ยังได้ภาพ (ใช้ตั้ง ROI) แต่ไม่บันทึก DB
 
 **live_update** (ทุก admin, throttle 250 ms ต่อรถเข็น): `cart`, `session_id`, `state`, `fps`, `detections`, `server_ms`, `infer_ms`, `items`, `total`, `item_count`
+
+**change_reason** (brief 7.6, ส่งทันทีที่สร้าง / final / voided):
+
+```json
+{"type":"change_reason","cart":"A-07","session_id":"…","reason_id":42,"status":"final","reason_code":"BRAND_SWITCH",
+ "label_th":"เปลี่ยนแบรนด์","tone":"primary","from":{"class_name":"lay_big_ori","name_th":"…","qty":1},
+ "to":{"class_name":"pringles_norm_ori","name_th":"…","qty":1},"price_delta":14,"dwell_ms":41000,"gap_ms":12000,
+ "pending_until_ms":null,"t":1761066123456}
+```
+
+`status: "pending"` มี `pending_until_ms` สำหรับนับถอยหลัง "รอดูสินค้าที่หยิบแทน…" · **presence:** `{type:"presence", cart, class_name, unit_no, state:"OCCLUDED"|"IN_CART", cause, occluded_by, last_box}` สำหรับ badge "ถูกบัง" และกรอบเส้นประบน Live detail
 
 ## POST /api/metrics
 
