@@ -8,6 +8,7 @@ import { adminRoutes } from './routes/admin.js';
 import { authRoutes } from './routes/auth.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { metricsRoutes } from './routes/metrics.js';
+import { productRoutes } from './routes/products.js';
 import { sessionRoutes } from './routes/sessions.js';
 
 const started = Date.now();
@@ -43,6 +44,7 @@ export function createApp({ db, hub, log, inference, pipeline }) {
   api.use('/auth', authRoutes({ db, log }));
   api.use('/sessions', sessionRoutes({ db, hub }));
   api.use('/products', requireAuth, catalogRoutes({ db }));
+  api.use('/admin/products', requireAuth, productRoutes({ db, hub }));
   api.use('/admin', requireAuth, adminRoutes({ db, hub, inference, log }));
   api.use((req, res, next) => next(new HttpError(404, 'NOT_FOUND', `ไม่พบ ${req.method} ${req.originalUrl}`)));
   app.use('/api', api);

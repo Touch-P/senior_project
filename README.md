@@ -94,7 +94,8 @@ better-sqlite3 13 และ bcrypt 6 มี native binary ที่ build ไว
 - Phase 4: inference service (FastAPI + Ultralytics, ByteTrack ต่อรถเข็น) + โหมด mock · สลับโมเดลจาก API โหลด weights จริง
 - Phase 5: data pipeline เต็มสาย (คิว → inference → tracker → SQLite → หน้าจอ) + หน้า `device.html` ใช้มือถือเป็นกล้องผ่าน Wi-Fi (HTTPS ใน LAN)
 - Phase 6: ติดตามสินค้ารายชิ้น (ถูกบัง ≠ หยิบออก) + เหตุผลการเปลี่ยนสินค้า real-time + `npm run rq4` เทียบโหมด tracker — [docs/presence-reasons.md](docs/presence-reasons.md)
-- ถัดไป: ค้นหา/สแกน/แก้สินค้า (admin) — ดู [docs/roadmap.md](docs/roadmap.md)
+- Phase 7: หน้า "สินค้าและราคา" ต่อ API จริง — ค้นหาชื่อไทย/บาร์โค้ด, สแกนด้วยกล้อง (BarcodeDetector + ZXing ในเครื่อง), แก้สินค้า/ราคา (SCD2) + audit, staff ถูกบล็อกที่ server · login ผ่าน server แล้ว (`?mock=1` = prototype เดิม)
+- ถัดไป: ทุกหน้าใช้ข้อมูลจริง — ดู [docs/roadmap.md](docs/roadmap.md)
 
 ## Branch
 

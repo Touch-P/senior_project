@@ -15,6 +15,7 @@ import { logger } from './logger.js';
 import { createPipeline } from './pipeline/index.js';
 import { createInference } from './pipeline/inferClient.js';
 import { syncActiveModel, watchInference } from './services/models.js';
+import { promoteDuePrices } from './services/products.js';
 import { createHub } from './ws/hub.js';
 import { attachWebSockets } from './ws/server.js';
 
@@ -67,11 +68,15 @@ async function main() {
   server.on('error', (err) => { log.fatal({ err: err.message }, 'server failed to start'); process.exit(1); });
 
   const purge = setInterval(() => purgeExpiredSessions(db), 60 * 60 * 1000);
+  // future-dated prices become current when their valid_from passes
+  const prices = setInterval(() => promoteDuePrices(db), 60 * 1000);
+  prices.unref();
   purge.unref();
 
   const shutdown = (signal) => {
     log.info({ signal }, 'shutting down');
     clearInterval(purge);
+    clearInterval(prices);
     watcher.stop();
     pipeline.stop();
     ws.close();
