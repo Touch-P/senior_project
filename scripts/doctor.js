@@ -106,5 +106,32 @@ if (Database) {
   }
 }
 
+// 8. inference: mock needs nothing; real needs uv + inference/.venv + weights, and the service when the server runs
+if (config.INFERENCE_MODE === 'mock') {
+  const { loadScenarios } = await import('../server/src/pipeline/scenarios.js');
+  try {
+    const n = loadScenarios(config.scenariosDir).size;
+    (n ? ok : fail)(`INFERENCE_MODE=mock · ${n} scenario ใน server/test/scenarios`, n ? undefined : 'npm run scenarios');
+  } catch (err) { fail(`scenario ไม่ถูกต้อง: ${err.message.split('\n')[0]}`); }
+} else {
+  const { execFileSync } = await import('node:child_process');
+  try {
+    ok(execFileSync('uv', ['--version'], { encoding: 'utf8' }).trim());
+  } catch {
+    warn('ไม่พบ uv (ใช้ติดตั้ง inference)', 'winget install astral-sh.uv หรือใช้ INFERENCE_MODE=mock');
+  }
+  if (existsSync(join(ROOT, 'inference', '.venv'))) ok('inference/.venv มีอยู่');
+  else warn('ยังไม่ได้ติดตั้ง inference/.venv', 'cd inference; uv sync   (ดาวน์โหลด torch CUDA ~2.5 GB)');
+  if (config.MODEL_PATH && existsSync(config.MODEL_PATH)) ok(`weights: ${config.MODEL_PATH}`);
+  else fail(`ไม่พบ MODEL_PATH: ${config.MODEL_PATH ?? '(ไม่ได้ตั้ง)'}`, 'แก้ MODEL_PATH ใน .env ให้ชี้ไปที่ best.pt ใน SNP');
+  try {
+    const res = await fetch(new URL('/health', config.INFERENCE_URL), { signal: AbortSignal.timeout(1500) });
+    const h = await res.json();
+    ok(`inference ${config.INFERENCE_URL}: ${h.model} บน ${h.device} · ${h.nc} คลาส`);
+  } catch {
+    warn(`inference ยังไม่ได้รันที่ ${config.INFERENCE_URL}`, 'เปิดอีกหน้าต่าง: npm run inference   (หรือ INFERENCE_MODE=mock ถ้าไม่มี GPU)');
+  }
+}
+
 console.log(failed ? `\n${failed} รายการไม่ผ่าน ดูวิธีแก้ด้านบน` : '\nพร้อมใช้งาน');
 process.exit(failed ? 1 : 0);

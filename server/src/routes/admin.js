@@ -1,10 +1,10 @@
 // Admin console API under /api/admin (login required; admin-only routes use r.admin()).
 import { Router } from 'express';
 import { z } from 'zod';
-import { syncModelCoverage } from '../db/catalog.js';
 import { HttpError, parse } from '../http/errors.js';
 import { cartSnapshot } from '../services/cart.js';
 import { issueDeviceToken } from '../services/devices.js';
+import { activateModel, pick } from '../services/models.js';
 import { routes } from './registry.js';
 
 const BASE = '/api/admin';
@@ -20,7 +20,7 @@ export function percentile(values, p) {
   return v[Math.min(v.length - 1, Math.max(0, Math.ceil((p / 100) * v.length) - 1))];
 }
 
-export function adminRoutes({ db, hub }) {
+export function adminRoutes({ db, hub, inference, log }) {
   const router = Router();
   const r = routes(router, BASE);
 
@@ -109,19 +109,16 @@ export function adminRoutes({ db, hub }) {
     res.json({ models });
   });
 
-  r.admin('post', '/models/:name/activate', (req, res) => {
+  r.admin('post', '/models/:name/activate', async (req, res) => {
     const name = parse(z.string().max(100), req.params.name);
-    const target = db.prepare('SELECT model_id, class_names FROM model_versions WHERE name = ?').get(name);
-    if (!target) throw new HttpError(404, 'MODEL_NOT_FOUND', 'ไม่พบโมเดล');
-    const from = db.prepare('SELECT name FROM model_versions WHERE is_active = 1').pluck().get();
-    db.transaction(() => {
-      db.prepare('UPDATE model_versions SET is_active = 0 WHERE is_active = 1').run();
-      db.prepare('UPDATE model_versions SET is_active = 1, activated_at = CURRENT_TIMESTAMP WHERE model_id = ?').run(target.model_id);
-      if (target.class_names) syncModelCoverage(db, JSON.parse(target.class_names));
-    })();
-    // Loading the weights in the inference service is wired in Phase 4.
-    hub.toAdmins({ type: 'model_changed', from, to: name, by: req.user.display_name });
-    res.json({ from, to: name });
+    res.json(await activateModel({ db, hub, inference, log }, name, req.user));
+  });
+
+  // inference service state for the model page (any logged-in role)
+  r.get('/inference', async (req, res) => {
+    let health = null;
+    try { health = await inference.health(); } catch { /* reported through status() */ }
+    res.json({ ...pick(inference.status()), health });
   });
 
   // ---------------------------------------------------------------- alerts

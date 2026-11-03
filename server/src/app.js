@@ -12,9 +12,10 @@ import { sessionRoutes } from './routes/sessions.js';
 const started = Date.now();
 
 /**
- * @param {{ db: import('better-sqlite3').Database, hub: ReturnType<typeof import('./ws/hub.js').createHub>, log: import('pino').Logger }} deps
+ * @param {{ db: import('better-sqlite3').Database, hub: ReturnType<typeof import('./ws/hub.js').createHub>, log: import('pino').Logger,
+ *           inference: ReturnType<typeof import('./pipeline/inferClient.js').createInference> }} deps
  */
-export function createApp({ db, hub, log }) {
+export function createApp({ db, hub, log, inference }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(securityHeaders);
@@ -23,7 +24,7 @@ export function createApp({ db, hub, log }) {
   const api = express.Router();
   api.use(express.json({ limit: '100kb' }), jsonOnly(), loadUser(db));
   api.get('/health', (req, res) => res.json({
-    ok: true, env: config.NODE_ENV, inference_mode: config.INFERENCE_MODE,
+    ok: true, env: config.NODE_ENV, inference_mode: inference.mode, inference_ok: inference.status().ok,
     uptime_s: Math.round((Date.now() - started) / 1000), ws: hub.stats(),
   }));
   // Public facts for the login page and customer screens (replaces numbers hard-coded in the prototype).
@@ -37,7 +38,7 @@ export function createApp({ db, hub, log }) {
   api.use('/auth', authRoutes({ db, log }));
   api.use('/sessions', sessionRoutes({ db, hub }));
   api.use('/products', requireAuth, catalogRoutes({ db }));
-  api.use('/admin', requireAuth, adminRoutes({ db, hub }));
+  api.use('/admin', requireAuth, adminRoutes({ db, hub, inference, log }));
   api.use((req, res, next) => next(new HttpError(404, 'NOT_FOUND', `ไม่พบ ${req.method} ${req.originalUrl}`)));
   app.use('/api', api);
 

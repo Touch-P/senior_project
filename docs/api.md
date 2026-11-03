@@ -50,7 +50,8 @@ Server เดียว (`npm run dev` / `npm start`) ให้บริการ
 | GET | `/api/admin/sessions?status=&limit=` | login | รายการ session |
 | GET | `/api/admin/sessions/:id` | login | รายละเอียด + timeline (`cart_events` + `frames.image_path`) |
 | GET | `/api/admin/models` | login | `model_versions` |
-| POST | `/api/admin/models/:name/activate` | **admin** | ตั้งโมเดล active + sync `products.in_model` (การโหลด weights จริงทำใน Phase 4) |
+| POST | `/api/admin/models/:name/activate` | **admin** | โหมด real: สั่ง inference โหลด weights ก่อน แล้วจึงตั้ง active + `class_names` จาก weights + sync `products.in_model` · 422 `MODEL_LOAD_FAILED` / `MODEL_UNSUPPORTED_FORMAT` / `MODEL_WEIGHTS_NOT_FOUND`, 503 `INFERENCE_DOWN`, 409 `MODEL_SWITCH_IN_PROGRESS` (DB ไม่เปลี่ยน) |
+| GET | `/api/admin/inference` | login | สถานะ inference: `mode`, `ok`, `model`, `device`, `nc`, `last_error`, `health` (ผล `/health` ของ service หรือรายการ scenario ในโหมด mock) |
 | GET | `/api/admin/alerts?open=0` | login | alert ที่ยังเปิดอยู่ (หรือทั้งหมด) |
 | POST | `/api/admin/alerts/:id/ack` | login | รับทราบ alert |
 | GET | `/api/admin/analytics/abandon?from=&to=` | login | อัตราเปลี่ยนใจต่อสินค้า (เฉพาะ event `auto`, เวลาเป็น epoch ms) |

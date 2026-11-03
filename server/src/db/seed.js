@@ -104,7 +104,7 @@ async function fetchModelNames() {
     if (!res.ok) return null;
     const body = await res.json();
     const names = Array.isArray(body.names) ? body.names : Object.values(body.names ?? {});
-    return names.length ? names.map(String) : null;
+    return names.length ? { model: body.model, names: names.map(String) } : null;
   } catch {
     return null;
   }
@@ -123,7 +123,10 @@ export async function seed(db, opts = {}) {
     const active = seedModels(db);
     const users = await seedUsers(db);
 
-    const live = opts.probeInference === false ? null : await fetchModelNames();
+    // labels from the running service count only when it serves the active model (otherwise the server
+    // start-up sync, services/models.js syncActiveModel, loads the active model first)
+    const probed = opts.probeInference === false ? null : await fetchModelNames();
+    const live = probed?.model === active.name ? probed.names : null;
     const names = live ?? JSON.parse(active.class_names);
     if (live) {
       db.prepare('UPDATE model_versions SET class_names = ? WHERE is_active = 1').run(JSON.stringify(live));

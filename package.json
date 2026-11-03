@@ -16,7 +16,11 @@
     "db:seed": "node server/src/db/seed.js",
     "export:feedback": "node server/src/jobs/exportFeedback.js",
     "export:latency": "node server/src/jobs/exportLatency.js",
-    "db:erd": "node scripts/erd.js"
+    "db:erd": "node scripts/erd.js",
+    "inference": "uv run --directory inference --frozen python app.py",
+    "inference:test": "uv run --directory inference --frozen pytest -q",
+    "infer:probe": "node scripts/infer-probe.js",
+    "scenarios": "node scripts/make-scenarios.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

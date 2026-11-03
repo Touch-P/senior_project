@@ -1,0 +1,38 @@
+[project]
+name = "smartcart-inference"
+version = "0.1.0"
+description = "Smart Cart YOLO inference service (FastAPI + Ultralytics). Read-only use of the benchmark weights."
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    # same versions as the benchmark runs in SNP/experiment.yaml (environment.ultralytics / torch)
+    "ultralytics==8.4.188",
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "python-multipart>=0.0.20",
+    # ByteTrack association (Ultralytics would otherwise pip-install it at runtime)
+    "lap>=0.5.12",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.0",
+    "pytest>=8",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+torchvision = [{ index = "pytorch-cu128" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

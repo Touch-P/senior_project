@@ -24,7 +24,11 @@ const schema = z.object({
   INFERENCE_MODE: z.enum(['real', 'mock']).default('real'),
   INFERENCE_URL: z.string().url().default('http://127.0.0.1:8001'),
   INFERENCE_TIMEOUT_MS: num(2000),
-  MODEL_PATH: z.string().optional(),
+  // mock mode: force one scenario for every cart (empty = per-cart / default scenario), simulated latency
+  MOCK_SCENARIO: z.string().default(''),
+  MOCK_LATENCY_MS: num(0),
+  // same default as inference/app.py; Python loads it at start, Node.js only checks it (doctor)
+  MODEL_PATH: z.string().default('C:/Users/Acer/Desktop/SNP/yolov11/outputv11/yolo11s-s0-20261025/weights/best.pt'),
   WEIGHTS_ROOT: z.string().default('C:/Users/Acer/Desktop/SNP'),
   CONF_THRESHOLD: num(0.7),
   TRACKER_WINDOW: num(8),
@@ -60,6 +64,7 @@ export const config = Object.freeze({
   logFile: env.LOG_FILE ? fromRoot(env.LOG_FILE) : null,
   migrationsDir: resolve(ROOT, 'db', 'migrations'),
   seedDir: resolve(ROOT, 'db', 'seed'),
+  scenariosDir: resolve(ROOT, 'server', 'test', 'scenarios'),
   webDir: resolve(ROOT, 'web'),
 });
 
