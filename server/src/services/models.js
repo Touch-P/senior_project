@@ -33,6 +33,18 @@ function applyNames(db, modelId, names) {
 
 let switching = false;
 
+/** Model switches are logged in job_runs (job = 'model_switch') for the history on the model page. */
+function logSwitch(db, status, info) {
+  const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  db.prepare('INSERT INTO job_runs (job, started_at, finished_at, status, message) VALUES (?, ?, ?, ?, ?)')
+    .run('model_switch', ts, ts, status, JSON.stringify(info));
+}
+
+export function switchHistory(db, limit = 10) {
+  return db.prepare("SELECT started_at, status, message FROM job_runs WHERE job = 'model_switch' ORDER BY run_id DESC LIMIT ?").all(limit)
+    .map((r) => ({ at: r.started_at, status: r.status, ...JSON.parse(r.message ?? '{}') }));
+}
+
 /**
  * Switch the active model. Real mode loads the weights first; the database changes only if loading succeeded,
  * so a model the service cannot run never becomes active.
@@ -56,7 +68,9 @@ export async function activateModel({ db, hub, inference, log }, name, user) {
         names = loaded.names ?? names;
       } catch (err) {
         log?.warn({ model: name, err: err.message }, 'model switch failed; keeping the current model');
-        throw toHttpError(err);
+        const httpErr = toHttpError(err);
+        logSwitch(db, 'error', { from, to: name, by: user.display_name, error: httpErr.code, switch_ms: Date.now() - t0 });
+        throw httpErr;
       }
     }
     const coverage = db.transaction(() => {
@@ -65,6 +79,7 @@ export async function activateModel({ db, hub, inference, log }, name, user) {
       return applyNames(db, target.model_id, names);
     })();
     const switchMs = Date.now() - t0;
+    logSwitch(db, 'ok', { from, to: name, by: user.display_name, switch_ms: switchMs });
     hub.toAdmins({ type: 'model_changed', from, to: name, by: user.display_name, switch_ms: switchMs });
     log?.info({ from, to: name, switch_ms: switchMs, by: user.display_name }, 'model activated');
     return { from, to: name, switch_ms: switchMs, detectable: coverage?.detectable ?? null };
