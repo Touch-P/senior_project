@@ -2,6 +2,7 @@
 //   HTTPS on HOST:PORT when TLS_CERT/TLS_KEY exist (+ HTTP_REDIRECT_PORT -> HTTPS).
 //   Without certificates: development falls back to plain HTTP on 127.0.0.1 only; production refuses to start.
 import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import http from 'node:http';
 import https from 'node:https';
 import { createApp } from './app.js';
@@ -41,7 +42,13 @@ async function main() {
     server = https.createServer({ cert: readFileSync(config.tlsCert), key: readFileSync(config.tlsKey) }, app);
     server.listen(config.PORT, config.HOST);
     url = `https://localhost:${config.PORT}`;
+    const caFile = resolve(dirname(config.tlsCert), 'smartcart-ca.crt');
     redirect = http.createServer((req, res) => {
+      // the phone downloads the local CA over plain HTTP once, before it can trust the HTTPS server
+      if (req.url === '/smartcart-ca.crt' && existsSync(caFile)) {
+        res.writeHead(200, { 'content-type': 'application/x-x509-ca-cert', 'content-disposition': 'attachment; filename="smartcart-ca.crt"' });
+        return res.end(readFileSync(caFile));
+      }
       const host = (req.headers.host ?? 'localhost').replace(/:\d+$/, '');
       res.writeHead(301, { Location: `https://${host}:${config.PORT}${req.url}` }).end();
     }).listen(config.HTTP_REDIRECT_PORT, config.HOST);

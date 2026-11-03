@@ -34,6 +34,7 @@ export function startSession(db, hub, input) {
   })();
   const store = db.prepare('SELECT name_th FROM stores WHERE store_id = ?').pluck().get(cart.store_id);
   hub.toAdmins({ type: 'live_update', event: 'session_started', cart: cart.label, session_id: sessionId, started_at_ms: now });
+  hub.toDevice(cart.label, { type: 'session', active: true });
   return { session_id: sessionId, cart: cart.label, store, started_at_ms: now, display_ws: `/ws/display/${sessionId}` };
 }
 
@@ -110,5 +111,6 @@ export function closeSession(db, hub, sessionId, { totalCheckout = null, userId 
   const closed = { ...cartSnapshot(db, sessionId), total_checkout: totalCheckout };
   hub.toDisplay(sessionId, closed);
   hub.toAdmins({ type: 'live_update', event: 'session_closed', cart: s.cart, session_id: sessionId, status });
+  hub.toDevice(s.cart, { type: 'session', active: false });
   return closed;
 }

@@ -41,6 +41,8 @@ export function authRoutes({ db, log }) {
   });
 
   r.get('/me', requireAuth, (req, res) => res.json({ user: publicUser(req.user) }));
+  // like /me but 200 with user null when logged out (pages that only adapt to the role; no 401 in the console)
+  r.get('/status', (req, res) => res.json({ user: req.user ? publicUser(req.user) : null }));
 
   return r;
 }

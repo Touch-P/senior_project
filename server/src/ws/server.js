@@ -49,6 +49,8 @@ function sameOrigin(req) {
 export function attachWebSockets(server, { db, hub, log, onFrame = () => {} }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
   const touchDevice = db.prepare('UPDATE devices SET last_seen_ms = ?, user_agent = COALESCE(?, user_agent) WHERE device_id = ?');
+  const cartInfo = db.prepare(`SELECT c.roi_polygon, s.session_id FROM carts c
+    LEFT JOIN shopping_sessions s ON s.cart_id = c.cart_id AND s.status = 'active' WHERE c.cart_id = ?`);
   const setDeviceInfo = db.prepare('UPDATE devices SET camera_desc = COALESCE(?, camera_desc), app_version = COALESCE(?, app_version) WHERE device_id = ?');
 
   server.on('upgrade', (req, socket, head) => {
@@ -89,6 +91,10 @@ export function attachWebSockets(server, { db, hub, log, onFrame = () => {} }) {
       if (!device) return reject(socket, 401, 'Unauthorized');
       return wss.handleUpgrade(req, socket, head, (client) => {
         hub.setDevice(label, client);
+        // what the phone needs to draw the preview: ROI of this cart and whether a customer session is running
+        const cartRow = cartInfo.get(device.cart_id);
+        client.send(JSON.stringify({ type: 'config', cart: label, roi_polygon: JSON.parse(cartRow.roi_polygon),
+          session_active: Boolean(cartRow.session_id), server_ts: Date.now() }));
         const ua = req.headers['user-agent']?.slice(0, 300) ?? null;
         let lastTouch = Date.now();
         touchDevice.run(lastTouch, ua, device.device_id);
