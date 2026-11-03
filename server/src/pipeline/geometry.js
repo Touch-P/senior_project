@@ -30,7 +30,7 @@ export function pointInPolygon([x, y], poly) {
   return inside;
 }
 
-function distToSegment([px, py], [ax, ay], [bx, by]) {
+export function distToSegment([px, py], [ax, ay], [bx, by]) {
   const dx = bx - ax, dy = by - ay;
   const len2 = dx * dx + dy * dy;
   const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
@@ -43,6 +43,19 @@ export function distToEdge(p, poly) {
   for (let i = 0; i < poly.length; i++) d = Math.min(d, distToSegment(p, poly[i], poly[(i + 1) % poly.length]));
   return d;
 }
+
+/** Index i of the polygon edge (poly[i] -> poly[i+1]) nearest to the point. */
+export function nearestEdge(p, poly) {
+  let best = 0, d = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const v = distToSegment(p, poly[i], poly[(i + 1) % poly.length]);
+    if (v < d) { d = v; best = i; }
+  }
+  return best;
+}
+
+/** Distance from a point to one edge of the polygon. */
+export const distToEdgeAt = (p, poly, i) => distToSegment(p, poly[i], poly[(i + 1) % poly.length]);
 
 /** Size of the polygon's bounding box (the larger side) — "ขนาด ROI" for the 12% edge band. */
 export function polygonSize(poly) {
