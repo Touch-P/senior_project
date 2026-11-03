@@ -21,7 +21,9 @@
     "inference:test": "uv run --directory inference --frozen pytest -q",
     "infer:probe": "node scripts/infer-probe.js",
     "scenarios": "node scripts/make-scenarios.js",
-    "loadtest": "node scripts/load-test.js"
+    "loadtest": "node scripts/load-test.js",
+    "device-link": "node scripts/device-link.js",
+    "lan-https": "powershell -ExecutionPolicy Bypass -File scripts/lan-https.ps1"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -29,6 +31,7 @@
     "express": "^5.3.0",
     "node-cron": "^4.6.0",
     "pino": "^10.4.0",
+    "qrcode-terminal": "^0.12.0",
     "ws": "^8.22.1",
     "zod": "^4.6.7"
   }

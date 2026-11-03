@@ -48,6 +48,15 @@ npm run inference              # เปิดค้างไว้อีกห�
 npm run infer:probe            # ลองส่งภาพตัวอย่างผ่าน client ของ server
 ```
 
+### มือถือเป็นกล้องรถเข็น
+
+```powershell
+npm run lan-https              # ครั้งแรก: cert สำหรับ IP ของ Wi-Fi (+ ติดตั้ง CA บนมือถือ, เปิด firewall ด้วยสิทธิ์ admin)
+npm run device-link -- A-07    # QR ของหน้า device.html สำหรับรถเข็น A-07
+```
+
+ขั้นตอนเต็ม, การติดตั้ง CA บน Android/iOS และวิธีแก้ปัญหา: [docs/phone-camera.md](docs/phone-camera.md) · pipeline และ load test: [docs/pipeline.md](docs/pipeline.md)
+
 ไม่มี GPU หรือไม่อยากรัน Python: ตั้ง `INFERENCE_MODE=mock` ใน `.env` แล้ว server จะเล่น scenario จาก `server/test/scenarios/` (สร้างจาก `web/data.js` ด้วย `npm run scenarios`) รายละเอียด โมเดลที่โหลดได้ และ latency ที่วัดได้: [docs/inference.md](docs/inference.md)
 
 - ยังไม่มี cert (มาใน Phase 5): server รัน **HTTP เฉพาะ `http://localhost:8443`** ในโหมด development มือถือยังเข้าไม่ได้
@@ -83,7 +92,8 @@ better-sqlite3 13 และ bcrypt 6 มี native binary ที่ build ไว
 - `v0.1.0-prototype` — clickable prototype (vanilla JS, hash router) ใช้ข้อมูลจำลองจาก `web/data.js` ยังไม่มี backend
 - Phase 3: server Node.js (Express + ws) — login/สิทธิ์ admin·staff ที่ server, REST session/รถเข็น/โมเดล/alert/analytics, WebSocket admin/display/device (UI ยังใช้ข้อมูลจำลองจนถึง Phase 8)
 - Phase 4: inference service (FastAPI + Ultralytics, ByteTrack ต่อรถเข็น) + โหมด mock · สลับโมเดลจาก API โหลด weights จริง
-- ถัดไป: data pipeline และใช้มือถือเป็นกล้องผ่าน Wi-Fi — ดู [docs/roadmap.md](docs/roadmap.md)
+- Phase 5: data pipeline เต็มสาย (คิว → inference → tracker → SQLite → หน้าจอ) + หน้า `device.html` ใช้มือถือเป็นกล้องผ่าน Wi-Fi (HTTPS ใน LAN)
+- ถัดไป: presence + เหตุผลการเปลี่ยนสินค้า — ดู [docs/roadmap.md](docs/roadmap.md)
 
 ## Branch
 
