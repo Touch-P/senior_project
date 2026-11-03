@@ -58,6 +58,9 @@ Server เดียว (`npm run dev` / `npm start`) ให้บริการ
 | GET | `/api/admin/analytics/abandon?from=&to=` | login | อัตราเปลี่ยนใจต่อสินค้า (เฉพาะ event `auto`, เวลาเป็น epoch ms) |
 | GET | `/api/admin/analytics/cooccurrence?min_support=` | login | คู่สินค้า + support + lift |
 | GET | `/api/admin/analytics/reasons?from=&to=` | login | สรุปเหตุผล final ต่อ reason_code (จำนวน, dwell เฉลี่ย, ส่วนต่างราคาเฉลี่ย) + 20 คู่ จาก → ไป ที่พบบ่อย |
+| GET | `/api/admin/analytics/overview?range=0\|1\|2` | login | KPI ของ Dashboard (วันนี้ / 7 / 30 วัน) เทียบช่วงก่อนหน้า + session ต่อชั่วโมง 08–22 |
+| GET | `/api/demo` · POST `/api/demo/play` | session id | เฉพาะ `INFERENCE_MODE=mock`: รายการ scenario / เล่น scenario เข้า pipeline ของรถเข็นใน session (`{session_id, scenario}`) |
+| GET | `/frames/...` | login | ภาพหลักฐาน (`FRAMES_DIR`) ที่ Sessions timeline ใช้ |
 | GET | `/api/admin/latency?window=1h\|24h\|7d` | login | p50/p95/p99 ต่อช่วง + จำนวนเฟรม / ทิ้ง / error |
 
 route ค้นหา/แก้สินค้า (`/api/admin/products/*`) มาใน Phase 7 และ `POST /api/metrics` มาใน Phase 5
