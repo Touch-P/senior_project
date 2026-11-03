@@ -65,6 +65,25 @@ export function updateSession(db, sessionId, patch) {
 
 const CHECKOUT_TTL_MS = 10 * 60 * 1000;
 
+/**
+ * Batch "session close" (brief 5): presence rows still current and reasons still pending are closed in the
+ * database even when no pipeline model was alive for the session (e.g. the server restarted). Normally the
+ * pipeline's presence model already did this on session_closing and nothing is left.
+ */
+function finalizeLeftovers(db, sessionId, now) {
+  db.transaction(() => {
+    const open = db.prepare("SELECT * FROM cart_item_presence WHERE session_id = ? AND is_current = 1 AND state != 'REMOVED'").all(sessionId);
+    const close = db.prepare('UPDATE cart_item_presence SET valid_to_ms = ?, is_current = 0 WHERE presence_id = ?');
+    const ins = db.prepare(`INSERT INTO cart_item_presence (session_id, product_id, unit_no, local_track_id, state, change_cause, last_seen_ms, last_box, valid_from_ms)
+                            VALUES (?, ?, ?, ?, 'REMOVED', 'CHECKOUT', ?, ?, ?)`);
+    for (const p of open) {
+      close.run(Math.max(now, p.valid_from_ms + 1), p.presence_id);
+      ins.run(sessionId, p.product_id, p.unit_no, p.local_track_id, p.last_seen_ms, p.last_box, Math.max(now, p.valid_from_ms + 1));
+    }
+    db.prepare("UPDATE change_reasons SET status = 'final', decided_at_ms = ? WHERE session_id = ? AND status = 'pending'").run(now, sessionId);
+  })();
+}
+
 /** Customer pressed "จบการซื้อ": issue the code shown as QR on C-07 (session stays active until the cashier confirms). */
 export function issueSummary(db, sessionId) {
   const s = getSession(db, sessionId);
@@ -108,6 +127,8 @@ export function closeSession(db, hub, sessionId, { totalCheckout = null, userId 
       payload: { total_auto: snap.total, total_checkout: totalCheckout },
     });
   }
+  finalizeLeftovers(db, sessionId, now);
+  hub.events?.emit('session_closed', { sessionId, cartId: s.cart_id, cart: s.cart, status });
   const closed = { ...cartSnapshot(db, sessionId), total_checkout: totalCheckout };
   hub.toDisplay(sessionId, closed);
   hub.toAdmins({ type: 'live_update', event: 'session_closed', cart: s.cart, session_id: sessionId, status });
