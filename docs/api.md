@@ -64,9 +64,9 @@ route ค้นหา/แก้สินค้า (`/api/admin/products/*`) ม�
 
 | Path | ยืนยันตัวตน | ทิศทาง |
 | --- | --- | --- |
-| `/ws/admin` | cookie login (admin/staff) + Origin | server → `hello`, `live_update`, `alert`, `alert_ack`, `model_changed`, `roi_changed`, `device_status` |
+| `/ws/admin` | cookie login (admin/staff) + Origin | server → `hello`, `live_update`, `cart_event`, `alert`, `alert_ack`, `model_changed`, `roi_changed`, `device_status`, `inference_status`, เฟรม binary ของรถเข็นที่ watch · client → `{"type":"watch","cart":"A-07"}` / `{"type":"watch","cart":null}` |
 | `/ws/display/{session_id}` | session id (UUID) | server → `cart_update` ทันทีที่ต่อ และทุกครั้งที่รายการเปลี่ยน / ปิด session |
-| `/ws/device/{cart}?token=` | device token | มือถือ → เฟรม binary; server → `ack`, `pong`, `roi_changed` |
+| `/ws/device/{cart}?token=` | device token | มือถือ → เฟรม binary, `hello` (`camera_desc`, `app_version`), `ping`; server → `ack`, `processed`, `pong`, `roi_changed` |
 
 - heartbeat: server ping ทุก 10 วินาที ตัด client ที่ไม่ตอบ · มือถือส่ง `{"type":"ping"}` ได้ → `pong`
 - กล้องต่อได้ 1 เครื่องต่อรถเข็น เครื่องใหม่แทนที่เครื่องเก่า (ปิดด้วย code 4000)
@@ -83,4 +83,21 @@ route ค้นหา/แก้สินค้า (`/api/admin/products/*`) ม�
  "item_count":2,"total":62,"started_at_ms":1793657700000,"frame_seq":null,"t_server_sent":1793657808894}
 ```
 
-`frame_seq` จะเป็นเลขเฟรมที่ทำให้รายการเปลี่ยนเมื่อ pipeline ทำงาน (Phase 5) — มือถือใช้วัด E2E
+`frame_seq` คือเลขเฟรมที่ทำให้รายการเปลี่ยน
+
+**processed** (ถึงมือถือทุกเฟรมหลัง publish): `{"type":"processed","seq":7,"detections":3,"state":"stable","t_server":…}` — มือถือวัด E2E = ส่งเฟรม → ได้ `processed` ของ seq เดียวกัน ถ้ารถเข็นไม่มี session จะได้ `{"idle":true}` (ไม่ infer ไม่บันทึก) และ inference ล้มจะได้ `error`
+
+**เฟรมไป admin** (binary, เฉพาะคนที่ส่ง `watch` รถเข็นนั้น, ไม่เกิน 4 ภาพ/วินาที): `{"type":"frame","cart","seq","session_id","roi","detections":[{class_name,conf,box,in_roi,accepted,track_id}]}` + `
+` + JPEG — ไม่มี session ก็ยังได้ภาพ (ใช้ตั้ง ROI) แต่ไม่บันทึก DB
+
+**live_update** (ทุก admin, throttle 250 ms ต่อรถเข็น): `cart`, `session_id`, `state`, `fps`, `detections`, `server_ms`, `infer_ms`, `items`, `total`, `item_count`
+
+## POST /api/metrics
+
+มือถือส่งด้วย `navigator.sendBeacon` (body เป็น text/plain JSON จึงอยู่นอก guard JSON-only) ยืนยันด้วย device token:
+
+```json
+{"cart":"A-07","token":"…","items":[{"seq":41,"rtt_ms":12.5,"e2e_ms":48.1}]}
+```
+
+อัปเดต `frames.rtt_ms` / `e2e_ms` ของเฟรมล่าสุดที่มี seq นั้น ค่าทั้งสองวัดด้วยนาฬิกามือถือเท่านั้น ไม่เคยลบกับเวลา server

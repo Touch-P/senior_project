@@ -10,6 +10,16 @@ import { seed } from '../src/db/seed.js';
 import { logger } from '../src/logger.js';
 import { createInference } from '../src/pipeline/inferClient.js';
 import { config } from '../src/config.js';
+import { createPipeline } from '../src/pipeline/index.js';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+
+/** frames saved by tests go to data/frames/_test/<random> (gitignored) and are deleted on close() */
+export const framesDir = () => {
+  const base = join(config.ROOT, 'data', 'frames', '_test');
+  mkdirSync(base, { recursive: true });
+  return mkdtempSync(join(base, 'run-'));
+};
 import { createHub } from '../src/ws/hub.js';
 import { attachWebSockets } from '../src/ws/server.js';
 
@@ -20,7 +30,7 @@ export const STAFF = { email: 'staff@smartcart.co.th', password: 'staff-pass' };
  * Start the full server (HTTP, in-memory DB) on a random port.
  * @param {{ onFrame?: Function, inference?: (db) => object }} [opts] inference defaults to mock mode (no Python needed)
  */
-export async function startServer({ onFrame, inference: makeInference } = {}) {
+export async function startServer({ onFrame, inference: makeInference, pipeline: withPipeline = false, cfg = {} } = {}) {
   resetLoginLimits();
   const db = openDb(':memory:');
   migrate(db);
@@ -29,14 +39,17 @@ export async function startServer({ onFrame, inference: makeInference } = {}) {
     .run(STAFF.email, await bcrypt.hash(STAFF.password, 4));
   const hub = createHub();
   const inference = makeInference ? makeInference(db) : createInference({ ...config, INFERENCE_MODE: 'mock', MOCK_SCENARIO: '' }, db);
-  const server = http.createServer(createApp({ db, hub, log: logger, inference }));
-  const ws = attachWebSockets(server, { db, hub, log: logger, onFrame });
+  const frames = withPipeline ? framesDir() : null;
+  const pipeline = withPipeline
+    ? createPipeline({ db, hub, inference, log: logger, cfg: { ...config, framesDir: frames, ...cfg } }) : null;
+  const server = http.createServer(createApp({ db, hub, log: logger, inference, pipeline }));
+  const ws = attachWebSockets(server, { db, hub, log: logger, onFrame: onFrame ?? pipeline?.onFrame });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   return {
-    db, hub, base, inference,
+    db, hub, base, inference, pipeline, frames,
     wsBase: base.replace('http', 'ws'),
-    async close() { ws.close(); await new Promise((r) => server.close(r)); db.close(); },
+    async close() { pipeline?.stop(); if (frames) rmSync(frames, { recursive: true, force: true }); ws.close(); await new Promise((r) => server.close(r)); db.close(); },
   };
 }
 

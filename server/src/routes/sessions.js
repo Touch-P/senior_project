@@ -51,10 +51,10 @@ export function sessionRoutes({ db, hub }) {
     requireActive(s);
     const productId = body.class_name
       ? db.prepare('SELECT product_id FROM products WHERE class_name = ?').pluck().get(body.class_name) ?? null : null;
-    // frame_id is attached by the pipeline's ring buffer (Phase 5)
     const { lastInsertRowid } = db.prepare(`INSERT INTO user_feedback (session_id, issue_type, product_id, comment, reported_by, created_at_ms)
                                             VALUES (?, ?, ?, ?, 'customer', ?)`)
       .run(sessionId, body.issue_type, productId, body.comment ?? null, Date.now());
+    hub.events?.emit('feedback', { cart: s.cart, sessionId, feedbackId: Number(lastInsertRowid) }); // attaches the recent frames
     raiseAlert(db, hub, {
       type: 'CUSTOMER_REPORT', cartId: s.cart_id, sessionId,
       message: `${s.cart} · ลูกค้าแจ้ง ${body.issue_type}${body.class_name ? ` · ${body.class_name}` : ''}`,

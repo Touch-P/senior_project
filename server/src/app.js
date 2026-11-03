@@ -7,25 +7,30 @@ import { jsonOnly, requestLog, securityHeaders } from './http/security.js';
 import { adminRoutes } from './routes/admin.js';
 import { authRoutes } from './routes/auth.js';
 import { catalogRoutes } from './routes/catalog.js';
+import { metricsRoutes } from './routes/metrics.js';
 import { sessionRoutes } from './routes/sessions.js';
 
 const started = Date.now();
 
 /**
  * @param {{ db: import('better-sqlite3').Database, hub: ReturnType<typeof import('./ws/hub.js').createHub>, log: import('pino').Logger,
- *           inference: ReturnType<typeof import('./pipeline/inferClient.js').createInference> }} deps
+ *           inference: ReturnType<typeof import('./pipeline/inferClient.js').createInference>,
+ *           pipeline?: ReturnType<typeof import('./pipeline/index.js').createPipeline> }} deps
  */
-export function createApp({ db, hub, log, inference }) {
+export function createApp({ db, hub, log, inference, pipeline }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(securityHeaders);
   app.use(requestLog(log));
 
+  // device metrics come from navigator.sendBeacon (text/plain), so they are mounted before the JSON-only guard
+  app.use('/api/metrics', metricsRoutes({ db, pipeline }));
+
   const api = express.Router();
   api.use(express.json({ limit: '100kb' }), jsonOnly(), loadUser(db));
   api.get('/health', (req, res) => res.json({
     ok: true, env: config.NODE_ENV, inference_mode: inference.mode, inference_ok: inference.status().ok,
-    uptime_s: Math.round((Date.now() - started) / 1000), ws: hub.stats(),
+    uptime_s: Math.round((Date.now() - started) / 1000), ws: hub.stats(), pipeline: pipeline?.stats() ?? null,
   }));
   // Public facts for the login page and customer screens (replaces numbers hard-coded in the prototype).
   api.get('/meta', (req, res) => {
