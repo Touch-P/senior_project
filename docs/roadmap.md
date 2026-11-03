@@ -8,7 +8,7 @@
 | 1 | `main`, `develop` | เสร็จ (`v0.1.0-prototype`) |
 | 2 | `chore/repo-structure`, `feature/db-schema`, `fix/schema-align-instruction` | เสร็จ |
 | 3 | `feature/backend-core` | เสร็จ |
-| 4 | `feature/inference-service` | — |
+| 4 | `feature/inference-service` | เสร็จ ([inference.md](inference.md)) |
 | 5 | `feature/phone-camera`, `feature/data-pipeline` | — |
 | 6 | `feature/cart-presence-reasons` | — |
 | 7 | `feature/admin-product-search` | — |
@@ -30,13 +30,20 @@ RQ4 เทียบ 3 แบบ วัดด้วย **cart accuracy** (สั�
 - tracker ทั้ง 3 แบบต้องมี interface เดียวกัน (รับ detections ของเฟรม → คืนจำนวนนิ่ง + event) เพื่อให้ presence/reason engine และ test scenario ใช้ร่วมกันได้
 - บันทึกโหมดที่ใช้ลงใน session (เช่น `shopping_sessions` หรือ `job_runs`/ไฟล์ผลทดลอง) เพื่อแยกผลตอนวิเคราะห์ — ตัดสินใจตอนทำ Phase 6
 - ต้องรัน scenario เดียวกัน (`server/test/scenarios/*.json`) ผ่านทั้ง 3 โหมดแล้วเก็บ cart accuracy / event ผิด เป็นสคริปต์ทดลองที่รันซ้ำได้
-- ส่วนติดต่อ inference ของโหมด (c): ByteTrack ต้องเก็บสถานะต่อรถเข็น → **Phase 4** ให้ `POST /infer` รับ `cart_id` และ `track=true` แล้วคืน `track_id` ต่อกล่อง (แยก tracker state ต่อ `cart_id` ใน Python)
+- ส่วนติดต่อ inference ของโหมด (c): ทำแล้วใน Phase 4 — `POST /infer?cart_id=&track=true` คืน `track_id` ต่อกล่อง (BYTETracker แยกต่อ `cart_id` ใน Python, `DELETE /tracks/{cart_id}` ตอนเริ่ม session) และโหมด mock คืน `track_id` จาก `id` ของวัตถุใน scenario
+- เริ่ม session ใหม่ต้องเรียก `inference.resetTracks(cart)` (Phase 5/6)
 
 ### Phase 3–5 — รูปแบบข้อความและ API ตาม instruction 2.6
 
 - `cart_update` ต้องมี `state` (`stable` / `updating`), `items[]` (`product_id`, `name`, `qty`, `unit_price`, `subtotal`), `total`, `frame_seq`, `t_server_sent` — device ใช้ `frame_seq` วัด E2E
 - REST ที่ instruction กำหนด: `POST /api/sessions`, `GET /api/sessions/{id}`, `POST /api/sessions/{id}/feedback`, `POST /api/sessions/{id}/checkout`, `GET /api/admin/analytics/abandon`, `GET /api/admin/analytics/cooccurrence`, `GET /api/admin/latency?window=`, CRUD สินค้า/ราคา
-- warm-up โมเดล 10 ครั้งตอน start inference (instruction 4.5)
+- warm-up โมเดล 10 ครั้งตอน start inference (instruction 4.5) — ทำแล้ว (10 ครั้งต่อรูปร่างภาพ 4:3 / 3:4 / 1:1)
+
+### Phase 5 — ต่อ pipeline เข้ากับ inference
+
+- frame queue ต่อรถเข็น (ยาว 2) → `inference.infer()` → บันทึก `t_infer_start_ms` / `t_infer_end_ms` จากผลของ client
+- นับ `consecutive_errors` ของ client แล้วสร้าง alert `INFERENCE_DOWN` (ตอนนี้ `watchInference` แค่ log + ส่ง `inference_status` ไป `/ws/admin`)
+- ตรวจว่า `result.model` ตรงกับโมเดล active ทุกเฟรม (กันช่วงที่กำลังสลับโมเดล)
 
 ### Phase 5 / 9 — การวัดผล (instruction ส่วนที่ 3)
 

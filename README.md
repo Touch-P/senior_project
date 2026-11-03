@@ -34,11 +34,21 @@ npm test
 
 รายละเอียด schema และ ER diagram: [docs/database.md](docs/database.md)
 
-## รัน server (Phase 3)
+## รัน server
 
 ```powershell
 npm run dev        # รีสตาร์ทเองเมื่อแก้โค้ด · หรือ npm start
 ```
+
+### Inference (โมเดล YOLO)
+
+```powershell
+cd inference; uv sync; cd ..   # ครั้งแรกครั้งเดียว: Python 3.11 + torch CUDA (~2.5 GB)
+npm run inference              # เปิดค้างไว้อีกหน้าต่าง (http://127.0.0.1:8001)
+npm run infer:probe            # ลองส่งภาพตัวอย่างผ่าน client ของ server
+```
+
+ไม่มี GPU หรือไม่อยากรัน Python: ตั้ง `INFERENCE_MODE=mock` ใน `.env` แล้ว server จะเล่น scenario จาก `server/test/scenarios/` (สร้างจาก `web/data.js` ด้วย `npm run scenarios`) รายละเอียด โมเดลที่โหลดได้ และ latency ที่วัดได้: [docs/inference.md](docs/inference.md)
 
 - ยังไม่มี cert (มาใน Phase 5): server รัน **HTTP เฉพาะ `http://localhost:8443`** ในโหมด development มือถือยังเข้าไม่ได้
 - มี `certs/lan.pem` + `certs/lan-key.pem`: รัน **HTTPS** ที่ `https://<IP เครื่อง>:8443` และพอร์ต 8080 redirect ไป HTTPS · cookie เป็น `Secure` อัตโนมัติ
@@ -65,12 +75,15 @@ better-sqlite3 13 และ bcrypt 6 มี native binary ที่ build ไว
 | `เขียน SQLite ใน ... ไม่ได้` | ตรวจ `DB_PATH` ใน `.env` และสิทธิ์เขียนโฟลเดอร์ `db/` (OneDrive/antivirus อาจล็อกไฟล์) |
 | `มี migration ที่ยังไม่รัน` | `npm run db:init` |
 | `ยังไม่มีฐานข้อมูล` | `npm run db:init; npm run db:seed` |
+| `inference ยังไม่ได้รันที่ ...` | เปิดอีกหน้าต่าง `npm run inference` หรือใช้ `INFERENCE_MODE=mock` |
+| `ยังไม่ได้ติดตั้ง inference/.venv` | `cd inference; uv sync` (ต้องมี uv: `winget install astral-sh.uv`) |
 
 ## สถานะปัจจุบัน
 
 - `v0.1.0-prototype` — clickable prototype (vanilla JS, hash router) ใช้ข้อมูลจำลองจาก `web/data.js` ยังไม่มี backend
 - Phase 3: server Node.js (Express + ws) — login/สิทธิ์ admin·staff ที่ server, REST session/รถเข็น/โมเดล/alert/analytics, WebSocket admin/display/device (UI ยังใช้ข้อมูลจำลองจนถึง Phase 8)
-- ถัดไป: inference service (Python/Ultralytics), data pipeline และใช้มือถือเป็นกล้องผ่าน Wi-Fi — ดู [docs/roadmap.md](docs/roadmap.md)
+- Phase 4: inference service (FastAPI + Ultralytics, ByteTrack ต่อรถเข็น) + โหมด mock · สลับโมเดลจาก API โหลด weights จริง
+- ถัดไป: data pipeline และใช้มือถือเป็นกล้องผ่าน Wi-Fi — ดู [docs/roadmap.md](docs/roadmap.md)
 
 ## Branch
 
