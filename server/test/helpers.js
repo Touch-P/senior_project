@@ -8,14 +8,19 @@ import { openDb } from '../src/db/connection.js';
 import { migrate } from '../src/db/migrate.js';
 import { seed } from '../src/db/seed.js';
 import { logger } from '../src/logger.js';
+import { createInference } from '../src/pipeline/inferClient.js';
+import { config } from '../src/config.js';
 import { createHub } from '../src/ws/hub.js';
 import { attachWebSockets } from '../src/ws/server.js';
 
 export const ADMIN = { email: 'admin@smartcart.co.th', password: 'change-me' };
 export const STAFF = { email: 'staff@smartcart.co.th', password: 'staff-pass' };
 
-/** Start the full server (HTTP, in-memory DB) on a random port. */
-export async function startServer({ onFrame } = {}) {
+/**
+ * Start the full server (HTTP, in-memory DB) on a random port.
+ * @param {{ onFrame?: Function, inference?: (db) => object }} [opts] inference defaults to mock mode (no Python needed)
+ */
+export async function startServer({ onFrame, inference: makeInference } = {}) {
   resetLoginLimits();
   const db = openDb(':memory:');
   migrate(db);
@@ -23,12 +28,13 @@ export async function startServer({ onFrame } = {}) {
   db.prepare(`INSERT INTO admin_users (email, password_hash, display_name, initials, role) VALUES (?, ?, 'วิภา ร้านดี', 'วร', 'staff')`)
     .run(STAFF.email, await bcrypt.hash(STAFF.password, 4));
   const hub = createHub();
-  const server = http.createServer(createApp({ db, hub, log: logger }));
+  const inference = makeInference ? makeInference(db) : createInference({ ...config, INFERENCE_MODE: 'mock', MOCK_SCENARIO: '' }, db);
+  const server = http.createServer(createApp({ db, hub, log: logger, inference }));
   const ws = attachWebSockets(server, { db, hub, log: logger, onFrame });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   return {
-    db, hub, base,
+    db, hub, base, inference,
     wsBase: base.replace('http', 'ws'),
     async close() { ws.close(); await new Promise((r) => server.close(r)); db.close(); },
   };
