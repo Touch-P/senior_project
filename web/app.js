@@ -340,16 +340,16 @@ function viewLogin() {
     <section style="display:grid;place-items:center;padding:48px 16px">
       <form class="card login-card" data-submit="login" novalidate>
         <div class="col gap-4"><h1 class="t-h1">เข้าสู่ระบบ</h1><span class="muted">สำหรับผู้ดูแลระบบและพนักงาน (admin / staff)</span></div>
-        ${err ? `<div class="err-banner" role="alert">${ic('alert')}<span>${locked ? 'บัญชีถูกล็อก 5 นาที เนื่องจากใส่รหัสผิดหลายครั้ง (จำลอง)' : `อีเมลหรือรหัสผ่านไม่ถูกต้อง เหลือ ${state.attempts} ครั้งก่อนบัญชีถูกล็อก 5 นาที`}</span></div>` : ''}
+        ${err ? `<div class="err-banner" role="alert">${ic('alert')}<span>${locked ? `บัญชีถูกล็อก 5 นาที เนื่องจากใส่รหัสผิดหลายครั้ง${API.mock ? ' (จำลอง)' : ''}` : `อีเมลหรือรหัสผ่านไม่ถูกต้อง เหลือ ${state.attempts} ครั้งก่อนบัญชีถูกล็อก 5 นาที`}</span></div>` : ''}
         <div class="field"><label for="email">อีเมล</label><div class="input ${err ? 'is-error' : ''}">${ic('user')}<input id="email" type="email" autocomplete="username" value="${esc(state.loginEmail)}" data-input="loginEmail">${err ? `<span style="color:var(--danger)">${ic('alert', 18)}</span>` : ''}</div></div>
         <div class="field"><label for="pw">รหัสผ่าน</label><div class="input ${err ? 'is-error' : ''}">${ic('lock')}<input id="pw" type="password" autocomplete="current-password" value="${esc(state.loginPw)}" data-input="loginPw" placeholder="••••••••"></div>
           ${err ? '<span class="helper err">ตรวจสอบรหัสผ่านอีกครั้ง (ตัวพิมพ์ใหญ่–เล็กมีผล)</span>' : ''}</div>
         <div class="row"><label class="checkbox grow"><input type="checkbox" checked><span class="box">${ic('check', 14)}</span><span>จดจำฉันไว้ในอุปกรณ์นี้</span></label>
           <button type="button" class="btn btn-ghost btn-m" data-act="forgot">ลืมรหัสผ่าน?</button></div>
         <button type="submit" class="btn btn-primary btn-l btn-block" ${locked ? 'disabled' : ''}>เข้าสู่ระบบ</button>
-        <div class="demo-creds t-cap col gap-4"><span class="t-cap-strong">บัญชีทดลอง (prototype)</span>
+        ${!API.mock ? Live.demoAccounts() : `<div class="demo-creds t-cap col gap-4"><span class="t-cap-strong">บัญชีทดลอง (prototype)</span>
           <span>admin: admin@smartcart.co.th / admin1234 · <button type="button" data-act="fill" data-role="admin">ใส่ให้</button></span>
-          <span>staff: staff@smartcart.co.th / staff1234 · <button type="button" data-act="fill" data-role="staff">ใส่ให้</button></span></div>
+          <span>staff: staff@smartcart.co.th / staff1234 · <button type="button" data-act="fill" data-role="staff">ใส่ให้</button></span></div>`}
         <span class="t-cap muted">สิทธิ์ของบัญชี (admin / staff) กำหนดโดยผู้ดูแลระบบ · staff ดูข้อมูลได้แต่เปลี่ยนโมเดลและแก้ราคาไม่ได้</span>
         <a class="t-cap" href="#/" style="color:var(--primary)">← กลับไปหน้าเลือกบทบาท</a>
       </form>
@@ -707,9 +707,14 @@ const VIEWS = {
 const currentPath = () => location.hash.replace(/^#/, '') || '/';
 function render() {
   const p = currentPath();
+  const focus = document.activeElement && document.activeElement.id ? { id: document.activeElement.id, pos: document.activeElement.selectionStart } : null;
   if (p.startsWith('/a/') && p !== '/a/login' && !state.user) { location.replace('#/a/login'); return; }
   const m = p.match(/^\/a\/live\/(.+)$/);
   $('#app').innerHTML = m ? viewLiveDetail(decodeURIComponent(m[1])) : (VIEWS[p] || viewRole)();
+  if (focus) {
+    const el = document.getElementById(focus.id);
+    if (el && el !== document.activeElement && el.matches('input')) { el.focus(); try { if (focus.pos != null) el.setSelectionRange(focus.pos, focus.pos); } catch { /* not a text input */ } }
+  }
 }
 window.addEventListener('hashchange', () => { state.bell = false; render(); window.scrollTo(0, 0); });
 
@@ -736,7 +741,7 @@ const ACT = {
   'sim-reset': () => { Object.assign(state.cart, { status: 'connected', pending: false, items: INITIAL_CART(), sheet: false }); go('#/c/cart'); render(); },
   fill: el => { const r = el.dataset.role; state.loginEmail = `${r}@smartcart.co.th`; state.loginPw = `${r}1234`; render(); },
   forgot: () => toast('info', 'ส่งลิงก์รีเซ็ตรหัสผ่านไปที่อีเมลแล้ว (จำลอง)'),
-  logout: (el, e) => { e.preventDefault(); state.user = null; state.loginPw = ''; state.loginErr = false; go('#/a/login'); },
+  logout: (el, e) => { e.preventDefault(); if (!API.mock) Live.logout(); state.user = null; state.loginPw = ''; state.loginErr = false; go('#/a/login'); },
   bell: () => { state.bell = !state.bell; render(); },
   range: el => { state.range = +el.dataset.v; render(); },
   'live-filter': el => { state.liveFilter = +el.dataset.v; render(); },
@@ -782,6 +787,7 @@ document.addEventListener('input', e => { const k = e.target.dataset.input; if (
 document.addEventListener('submit', e => {
   if (e.target.dataset.submit !== 'login') return;
   e.preventDefault();
+  if (!API.mock) { Live.login(); return; } // server-side login, lockout counted at the server
   if (state.attempts <= 0) return;
   const acc = ACCOUNTS[state.loginEmail.trim().toLowerCase()];
   if (acc && acc.password === state.loginPw) {
@@ -801,4 +807,5 @@ setInterval(() => {
   });
 }, 1000);
 
-render();
+// start after every script (api.js, live.js, views/*.js) has loaded; live mode restores the server session first
+document.addEventListener('DOMContentLoaded', () => (typeof Live !== 'undefined' ? Live.boot() : Promise.resolve()).then(render));

@@ -21,6 +21,13 @@ const ctx = {};
 vm.runInNewContext(readFileSync(resolve(ROOT, 'web', 'data.js'), 'utf8') + '\n;this.CARTS = CARTS;', ctx);
 
 const below = ([x1, y1, x2, y2]) => [x1, y1 + 0.75, x2, y2 + 0.75]; // same box pushed out through the bottom edge
+// same box slid down until it touches the bottom of the frame (last sighting in the ROI edge band, brief 7.2)
+const atEdge = ([x1, y1, x2, y2]) => { const dy = 0.985 - y2; return [x1, y1 + dy, x2, y2 + dy]; };
+/** Two segments: slide to the bottom edge, then out of the frame (a hand taking the item out of the basket). */
+const leave = (others, obj, note) => [
+  { frames: ENTER, note, objects: [...others, { ...obj, from: obj.box, box: atEdge(obj.box) }] },
+  { frames: 3, objects: [...others, { ...obj, from: atEdge(obj.box), box: below(obj.box) }] },
+];
 const slug = (label) => label.toLowerCase();
 
 function cartScenario(cart) {
@@ -49,7 +56,7 @@ function cartScenario(cart) {
       timeline.push({ frames: ENTER, note: `ADD ${step.obj.class_name}`, objects: [...outside, ...others, { ...step.obj, from: below(step.obj.box) }] });
       inCart = [...others, step.obj];
     } else {
-      timeline.push({ frames: ENTER, note: `REMOVE ${step.obj.class_name}`, objects: [...outside, ...others, { ...step.obj, from: step.obj.box, box: below(step.obj.box) }] });
+      timeline.push(...leave([...outside, ...others], step.obj, `REMOVE ${step.obj.class_name}`));
       inCart = others;
     }
     timeline.push({ frames: SETTLE, objects: [...outside, ...inCart] });
@@ -57,8 +64,8 @@ function cartScenario(cart) {
   timeline.push({ frames: HOLD, note: 'final basket', objects: [...outside, ...inCart] });
   for (const obj of [...inCart].reverse()) {
     inCart = inCart.filter((o) => o.id !== obj.id);
-    timeline.push({ frames: ENTER, note: `REMOVE ${obj.class_name} (unload)`, objects: [...outside, ...inCart, { ...obj, from: obj.box, box: below(obj.box) }] });
-    timeline.push({ frames: 3, objects: [...outside, ...inCart] });
+    timeline.push(...leave([...outside, ...inCart], obj, `REMOVE ${obj.class_name} (unload)`));
+    timeline.push({ frames: 2 * 8 + 6, objects: [...outside, ...inCart] }); // gone for 2W frames before the next one
   }
 
   const scenario = {
@@ -74,6 +81,10 @@ function cartScenario(cart) {
     seed: [...cart.id].reduce((h, c) => h * 31 + c.charCodeAt(0), 7) >>> 0,
     infer_ms: cart.lat ? Math.round(cart.lat / 12) : 14,
     timeline,
+    // one pass: every item goes in and comes out again (A-08: lay_big_nori is put back on the shelf in between)
+    // (boxes under the model's 0.70 threshold, e.g. A-03 lay_party_ori 0.58, are never counted)
+    expect: { cart: cart.id, items: {}, events: { ADD: order.filter((x) => x.kind === 'add' && x.obj.conf >= 0.7).length,
+      REMOVE: order.filter((x) => x.kind === 'add' && x.obj.conf >= 0.7).length } },
   };
   return ScenarioSchema.parse(scenario);
 }

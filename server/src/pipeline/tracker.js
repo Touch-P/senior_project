@@ -7,7 +7,7 @@
 //
 // Every mode assigns local_track_id to accepted detections (greedy IoU with the previous boxes of the same
 // class), which the presence engine uses to follow single items.
-import { iou } from './geometry.js';
+import { center, iou } from './geometry.js';
 
 export const TRACKER_MODES = ['frame', 'window', 'bytetrack'];
 
@@ -23,7 +23,7 @@ export function modeOf(values, prefer) {
 /**
  * @param {{ mode?: 'frame'|'window'|'bytetrack', window?: number, addK?: number, iouMatch?: number }} [opts]
  */
-export function createTracker({ mode = 'window', window: W = 8, addK: K = 3, iouMatch = 0.3 } = {}) {
+export function createTracker({ mode = 'window', window: W = 8, addK: K = 3, iouMatch = 0.3, maxJump = 0.25 } = {}) {
   if (!TRACKER_MODES.includes(mode)) throw new Error(`unknown TRACKER_MODE ${mode}`);
   const removeAfter = 2 * W;
   let frame = 0;
@@ -49,6 +49,17 @@ export function createTracker({ mode = 'window', window: W = 8, addK: K = 3, iou
           if (t.class_name !== d.class_name) continue;
           const v = iou(t.box, d.box);
           if (v >= bestIou) { best = t; bestIou = v; }
+        }
+      }
+      if (!best) {
+        // fast motion (an item being put in) leaves no overlap between frames: nearest centre of the same class
+        let bestDist = maxJump;
+        const c = center(d.box);
+        for (const t of free) {
+          if (t.class_name !== d.class_name || t.last !== frame - 1) continue;
+          const tc = center(t.box);
+          const dist = Math.hypot(c[0] - tc[0], c[1] - tc[1]);
+          if (dist <= bestDist) { best = t; bestDist = dist; }
         }
       }
       if (!best) {

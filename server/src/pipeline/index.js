@@ -7,6 +7,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { createFrameStore } from './frameStore.js';
 import { parseRoi } from './geometry.js';
 import { createSimpleCartModel } from './cartModel.js';
+import { createPresenceModel } from './presenceModel.js';
 import { statements, writeFrame } from './persist.js';
 import { postprocess } from './postprocess.js';
 import { createTracker } from './tracker.js';
@@ -24,7 +25,9 @@ import { cartSnapshot } from '../services/cart.js';
  * @param {{ db: import('better-sqlite3').Database, hub: any, inference: any, log: import('pino').Logger, cfg: any,
  *           createCartModel?: Function }} deps
  */
-export function createPipeline({ db, hub, inference, log, cfg, createCartModel = createSimpleCartModel }) {
+export function createPipeline({ db, hub, inference, log, cfg, createCartModel }) {
+  // PRESENCE_RULES=false: plain count changes (baseline for RQ4 mode (a)); default: presence + reasons (brief section 7)
+  createCartModel ??= cfg.PRESENCE_RULES === false ? createSimpleCartModel : createPresenceModel;
   const s = statements(db);
   const writer = createWriter(db, { flushMs: cfg.WRITER_FLUSH_MS ?? 1000, maxOps: 200, log });
   const store = createFrameStore({ dir: cfg.framesDir, root: cfg.ROOT, size: 20 });
@@ -283,6 +286,13 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel =
     }
   }, 5000);
   watchdog.unref();
+  // reasons whose pairing window closed become final even when no frame arrives (camera off, cart parked)
+  const ticker = setInterval(() => {
+    for (const c of carts.values()) {
+      try { c.session?.model.tick?.(Date.now()); } catch (err) { log.error({ err, cart: c.label }, 'reason tick failed'); }
+    }
+  }, 1000);
+  ticker.unref();
 
   // customer pressed "รายการไม่ถูกต้อง": keep the recent frames of that cart as evidence (retrain export)
   hub.events?.on('feedback', ({ cart, sessionId, feedbackId }) => {
@@ -318,6 +328,6 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel =
       while ((active || [...carts.values()].some((c) => c.queue.length)) && Date.now() < end) await sleep(10);
       writer.flush();
     },
-    stop() { stopped = true; clearInterval(watchdog); writer.close(); },
+    stop() { stopped = true; clearInterval(watchdog); clearInterval(ticker); writer.close(); },
   };
 }

@@ -10,8 +10,8 @@
 | 3 | `feature/backend-core` | เสร็จ |
 | 4 | `feature/inference-service` | เสร็จ ([inference.md](inference.md)) |
 | 5 | `feature/phone-camera`, `feature/data-pipeline` | เสร็จ ([pipeline.md](pipeline.md), [phone-camera.md](phone-camera.md)) — รอวัดด้วยมือถือจริง |
-| 6 | `feature/cart-presence-reasons` | — |
-| 7 | `feature/admin-product-search` | — |
+| 6 | `feature/cart-presence-reasons` | เสร็จ ([presence-reasons.md](presence-reasons.md)) — UI ของเหตุผลต่อใน Phase 8 |
+| 7 | `feature/admin-product-search` | เสร็จ (`v0.3.0`) — ค้นหา/สแกน/แก้สินค้า, ZXing ใน `web/vendor/` |
 | 8 | `feature/ui-integration` | — |
 | 9 | `feature/data-pipeline` (batch jobs) | — |
 
