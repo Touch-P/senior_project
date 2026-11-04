@@ -306,7 +306,7 @@ const LiveAdmin = (() => {
         </div>
         <div class="col gap-16">
           <div class="card card-pad">${cardHead('Detections (เฟรมนี้)', `${dets.length} กล่อง · ${inRoi.length} ใน ROI · conf ≥ ${(Live.meta?.active_model?.conf_threshold ?? 0.7).toFixed(2)}`)}<div class="col" style="gap:10px" id="live-dets">${detList}</div></div>
-          <div class="card card-pad">${cardHead('รายการ (stable)', 'presence รายชิ้น · tracker W=8, K=3' + (A.liveInfo[label]?.state === 'updating' ? ' · มีรายการรอยืนยัน' : ''))}
+          <div class="card card-pad">${cardHead('รายการ (stable)', 'presence รายชิ้น · ' + trackerLabel(A.liveInfo[label]?.tracker_scale) + (A.liveInfo[label]?.state === 'updating' ? ' · มีรายการรอยืนยัน' : ''))}
             <div class="col gap-8">${items.map((i) => `<div class="row"><span class="t-cap grow">${esc(i.name)} ×${i.qty}</span>${occCount(i.class_name) ? badge('warning', `ถูกบัง ${occCount(i.class_name)}`) : ''}<span class="t-cap-strong num">${baht(i.subtotal)}</span></div>`).join('') || '<span class="t-cap muted">ยังไม่มีสินค้า</span>'}
             <div class="row" style="margin-top:4px"><span class="t-strong muted grow">ราคารวม</span><span class="t-h2 num">${baht(s?.total ?? 0)}</span></div></div></div>
           <div class="card card-pad">${cardHead('เหตุผลการเปลี่ยนสินค้า (สด)', 'change_reasons · จับคู่ ±60 วินาที · rule v1')}
@@ -319,6 +319,8 @@ const LiveAdmin = (() => {
         <div class="row wrap gap-8">${events.map((e) => { const r = reasonByRemove.get(e.event_id); return `<span class="chip">${pimg(e.class_name, 32, 6)}${badge({ ADD: 'success', REMOVE: 'danger', CORRECTION: 'warning' }[e.event_type], e.event_type)}<span class="t-cap">${esc(e.class_name ?? '')} ${e.qty_delta > 0 ? '+' : '−'}${Math.abs(e.qty_delta)}</span>${r ? badge(r.tone, r.label_th) : ''}<span class="t-cap muted">${hhmmss(e.occurred_at_ms)}</span></span>`; }).join('') || '<span class="t-cap muted">ยังไม่มีเหตุการณ์</span>'}</div></div>`);
   }
 
+  /** W / K are frames at 4 fps; a faster cart multiplies them (same seconds): 30 fps -> W=60, K=23 */
+  const trackerLabel = (sc) => (sc > 1 ? `tracker W=${Math.round(8 * sc)}, K=${Math.round(3 * sc)} (×${sc} ตาม fps จริง)` : 'tracker W=8, K=3');
   /** CSS aspect-ratio of the Live detail camera = the frame's own ratio (w/h from the JPEG itself, server side),
    *  so boxes and ROI (normalised to the frame) sit exactly on the image. 4/3 only until the first frame. */
   const frameRatio = (fr) => (fr?.w > 0 && fr?.h > 0 ? `${fr.w} / ${fr.h}` : '4 / 3');

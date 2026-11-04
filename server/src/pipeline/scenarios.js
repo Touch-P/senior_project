@@ -63,18 +63,23 @@ const r5 = (v) => Math.round(v * 1e5) / 1e5;
 
 /**
  * Expand the timeline into one detection list per frame.
+ * With `fps` other than the scenario's own (e.g. 30 for a 4 fps timeline): the same scene recorded at that rate —
+ * every segment lasts the same time (frames × fps / sc.fps), objects move along the same lines, the detector jitter
+ * is drawn per frame. Used by the 30 fps tracker tests and `npm run rq4 -- --fps 30`.
  * @param {z.infer<typeof ScenarioSchema>} sc
+ * @param {number} [fps] default: sc.fps (exactly the frames of the file)
  * @returns {{ i: number, t_ms: number, note?: string, detections: { id: string, track_id: number, class_name: string, conf: number, x1: number, y1: number, x2: number, y2: number }[] }[]}
  */
-export function expandScenario(sc) {
+export function expandScenario(sc, fps = sc.fps) {
   const rand = prng(sc.seed);
   const noise = (amp) => (rand() * 2 - 1) * amp;
   const trackIds = new Map(); // object id -> stable numeric id (what ByteTrack would return)
   const frames = [];
   for (const seg of sc.timeline) {
-    for (let f = 0; f < seg.frames; f++) {
+    const n = fps === sc.fps ? seg.frames : Math.max(1, Math.round((seg.frames * fps) / sc.fps));
+    for (let f = 0; f < n; f++) {
       // progress 1/n .. 1 so the last frame of a segment sits exactly on "box"
-      const p = (f + 1) / seg.frames;
+      const p = (f + 1) / n;
       const detections = [];
       for (const o of seg.objects) {
         const start = o.from ?? o.box;
@@ -88,7 +93,7 @@ export function expandScenario(sc) {
           x1: r5(x1), y1: r5(y1), x2: r5(x2), y2: r5(y2),
         });
       }
-      frames.push({ i: frames.length, t_ms: Math.round((frames.length * 1000) / sc.fps), ...(f === 0 && seg.note ? { note: seg.note } : {}), detections });
+      frames.push({ i: frames.length, t_ms: Math.round((frames.length * 1000) / fps), ...(f === 0 && seg.note ? { note: seg.note } : {}), detections });
     }
   }
   return frames;

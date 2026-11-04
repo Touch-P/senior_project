@@ -65,7 +65,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
       c.session = {
         id: row.session_id,
         startedAt: row.started_at_ms,
-        tracker: createTracker({ mode: cfg.TRACKER_MODE, window: cfg.TRACKER_WINDOW, addK: cfg.TRACKER_ADD_K }),
+        tracker: createTracker({ mode: cfg.TRACKER_MODE, window: cfg.TRACKER_WINDOW, addK: cfg.TRACKER_ADD_K, refFps: cfg.TRACKER_REF_FPS }),
         model: createCartModel({ db, writer, hub, store, cfg, log, sessionId: row.session_id, cart }),
       };
       store.clear(c.label);
@@ -171,7 +171,9 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     let snapshot = null;
     if (session) {
       // stage 5: tracker
-      const tr = session.tracker.update(dets);
+      // the receive time drives the tracker's frame-rate scale (W / K are frames at TRACKER_REF_FPS)
+      // + the phone's declared fps (hello) until the real rate of this cart is measured
+      const tr = session.tracker.update(dets, job.t.received, job.ws?.settings?.fps);
       job.t.tracker = Date.now();
       job.tracker = tr;
       store.push(c.label, { seq: job.seq, jpeg: job.jpeg, frameId: null, sessionId: session.id, t: job.t.received, job });
@@ -266,7 +268,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     const snap = snapshot ?? (job.sessionId ? cartSnapshot(db, job.sessionId, { state: job.tracker?.state, frameSeq: job.seq }) : null);
     hub.toAdmins({
       type: 'live_update', event: 'frame', cart: c.label, session_id: job.sessionId, seq: job.seq,
-      state: job.tracker?.state ?? null, fps: liveFps(c),
+      state: job.tracker?.state ?? null, fps: liveFps(c), tracker_scale: job.tracker?.scale ?? null,
       detections: job.dets.filter((d) => d.accepted).length,
       server_ms: now - job.t.received, infer_ms: job.result?.infer_ms ?? null,
       items: snap?.items.map((i) => ({ class_name: i.class_name, name: i.name, qty: i.qty, subtotal: i.subtotal })) ?? [],

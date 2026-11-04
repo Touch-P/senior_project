@@ -53,6 +53,8 @@ const schema = z.object({
   JOBS: z.enum(['on', 'off']).default('on'),
   TRACKER_WINDOW: num(8),
   TRACKER_ADD_K: num(3),
+  // W / K above are frame counts at this rate; faster carts multiply them by round(fps / TRACKER_REF_FPS)
+  TRACKER_REF_FPS: num(4),
   REASON_PAIR_WINDOW_MS: num(60000),
   ADMIN_EMAIL: z.string().email().default('admin@smartcart.co.th'),
   ADMIN_PASSWORD: z.string().min(1).default('change-me'),
