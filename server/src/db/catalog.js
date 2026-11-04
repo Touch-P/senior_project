@@ -1,6 +1,7 @@
 // Product master import and model-coverage sync (shared by seed and server start).
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { config } from '../config.js';
 
 const MASTER_COLUMNS = ['class_name', 'sku', 'barcode', 'name_th', 'brand', 'product_line', 'flavor', 'variant',
@@ -34,6 +35,23 @@ export function parseCsv(text) {
   const [header, ...body] = rows;
   return body.map((r) => Object.fromEntries(header.map((h, i) => [h.trim(), (r[i] ?? '').trim()])));
 }
+
+/**
+ * The single model data file (web/models-data.js, generated from models/*\/*-test-metrics.json).
+ * It is a browser script that sets globalThis.MODEL_DATA, so it is evaluated in an empty sandbox.
+ * @returns {{ default_active: string, split: string, models: any[] }}
+ */
+export function readModelData(file = join(config.webDir, 'models-data.js')) {
+  const sandbox = { globalThis: {} };
+  sandbox.globalThis = sandbox;
+  runInNewContext(readFileSync(file, 'utf8'), sandbox, { filename: file, timeout: 1000 });
+  const data = sandbox.MODEL_DATA;
+  if (!data?.models?.length) throw new Error(`${file}: MODEL_DATA.models is empty`);
+  return data;
+}
+
+/** 9435532 -> "9.44M" (model_versions.params is text) */
+export const formatParams = (n) => (n == null ? null : `${(n / 1e6).toFixed(2)}M`);
 
 /**
  * Read and validate db/seed/products_master.csv.

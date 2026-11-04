@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { runJob } from '../jobs/jobRuns.js';
 import { logger } from '../logger.js';
-import { importProductMaster, readProductMaster, syncModelCoverage } from './catalog.js';
+import { formatParams, importProductMaster, readModelData, readProductMaster, syncModelCoverage } from './catalog.js';
 import { openDb } from './connection.js';
 import { migrate } from './migrate.js';
 
@@ -22,26 +22,16 @@ export const CART_LABELS = [
   'B-01', 'B-02', 'B-03', 'C-01', 'C-02',
 ];
 
-/** Labels of the 11-class dataset every benchmark model was trained on (SNP/experiment.yaml). */
-export const CLASSES_11 = ['bengbeng_pack12', 'doritos_mid_nacho', 'koalas_march_chocolate', 'kohkae_small_wasabi',
-  'lay_big_nori', 'lay_big_ori', 'lay_party_ori', 'mama_cup_ok_cheeseGo', 'mama_cup_ok_hotKR',
-  'pringles_norm_ori', 'rosdee_mid_pork'];
+const MODEL_DATA = readModelData();
 
-export const ACTIVE_MODEL = 'yolo11s-s0-20261025';
+/** Labels of the 20-class dataset the models were trained on (read from the model data file, not hard-coded). */
+export const CLASSES = MODEL_DATA.models[0].per_class.map((c) => c.name);
 
-/** MODELS from web/data.js + weights paths relative to WEIGHTS_ROOT (SNP, read-only). */
-export const MODELS = [
-  ['yolo11s-s0-20261025', 'YOLO11', 's', 'pt', 0.916, 4.20, '9.43M', 21.7, 'yolov11/outputv11/yolo11s-s0-20261025/weights/best.pt'],
-  ['yolo12s-s0-20261025', 'YOLO12', 's', 'pt', 0.916, 5.81, '9.26M', 23.5, 'yolov12/outputv12/yolo12s-s0-20261025/weights/best.pt'],
-  ['yolov10s-s0-20261025', 'YOLOv10', 's', 'pt', 0.913, 4.63, '8.07M', 24.9, 'yolov10/outputv10/yolov10s-s0-20261025/weights/best.pt'],
-  ['yolov13s-s0-20261025', 'YOLOv13', 's', 'pt', 0.911, 8.79, '9.56M', 21.7, 'yolov13/outputv13/yolov13s-s0-20261025/weights/best.pt'],
-  ['yolov8s-s0-20261025', 'YOLOv8', 's', 'pt', 0.894, 3.45, '11.14M', 28.7, 'yolov8/outputv8/yolov8s-s0-20261025/weights/best.pt'],
-  ['yolo26s-s0-20261025', 'YOLO26', 's', 'pt', 0.894, 5.56, '9.96M', 22.8, 'yolov26/outputv26/yolo26s-s0-20261025/weights/best.pt'],
-  ['yolov5su-s0-20261025', 'YOLOv5', 'su', 'pt', 0.885, 4.20, '9.13M', 24.1, 'yolov5/outputv5/yolov5su-s0-20261025/weights/best.pt'],
-  ['yolov6s-s0-20261025', 'YOLOv6', 's', 'pt', 0.868, 4.15, '20.10M', null, 'yolov6/outputv6/yolov6s-s0-20261025/weights/best_ckpt.pt'],
-  ['yolov7-tiny-s0-20261025', 'YOLOv7', 'tiny', 'pt', 0.767, 3.62, '6.03M', null, 'yolov7/outputv7/yolov7-tiny-s0-20261025/weights/best.pt'],
-  ['yolov4-s0-20261025', 'YOLOv4', '—', 'weights', 0.280, 6.44, '—', null, 'yolov4/outputv4/yolov4-s0-20261025/weights/yolov4-smartcart_best.weights'],
-];
+/** Model that is active on a fresh database (default_active in web/models-data.js). */
+export const ACTIVE_MODEL = MODEL_DATA.default_active;
+
+/** Models of web/models-data.js; weights_path is relative to WEIGHTS_ROOT (the models/ folder). */
+export const MODELS = MODEL_DATA.models;
 
 function seedStoreAndCarts(db) {
   db.prepare('INSERT INTO stores (code, name_th) VALUES (?, ?) ON CONFLICT (code) DO NOTHING').run(STORE.code, STORE.name_th);
@@ -60,15 +50,32 @@ function seedStoreAndCarts(db) {
 }
 
 function seedModels(db) {
-  const upsert = db.prepare(`INSERT INTO model_versions (name, family, size, format, map50_95, latency_p95_ms, params, gflops,
-      weights_path, class_names)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  const upsert = db.prepare(`INSERT INTO model_versions (name, family, size, format, imgsz, map50_95, map50, precision, recall,
+      latency_p95_ms, params, gflops, per_class, weights_path, class_names)
+    VALUES (@name, @family, @size, @format, @imgsz, @map50_95, @map50, @precision, @recall,
+      @latency_p95_ms, @params, @gflops, @per_class, @weights_path, @class_names)
     ON CONFLICT (name) DO UPDATE SET family = excluded.family, size = excluded.size, format = excluded.format,
-      map50_95 = excluded.map50_95, latency_p95_ms = excluded.latency_p95_ms, params = excluded.params,
-      gflops = excluded.gflops, weights_path = excluded.weights_path,
+      imgsz = excluded.imgsz, map50_95 = excluded.map50_95, map50 = excluded.map50, precision = excluded.precision,
+      recall = excluded.recall, latency_p95_ms = excluded.latency_p95_ms, params = excluded.params,
+      gflops = excluded.gflops, per_class = excluded.per_class, weights_path = excluded.weights_path,
       class_names = COALESCE(model_versions.class_names, excluded.class_names)`);
-  for (const m of MODELS) upsert.run(...m, JSON.stringify(CLASSES_11));
-  // Activate the default model only on a fresh database; never override an admin's later choice.
+  for (const m of MODELS) {
+    upsert.run({
+      ...m, imgsz: m.imgsz ?? 640, params: formatParams(m.params), per_class: JSON.stringify(m.per_class),
+      class_names: JSON.stringify(m.per_class.map((c) => c.name)),
+    });
+  }
+  // Models that are no longer in the data file leave the database.
+  // Rows that sessions/frames still point at stay for those foreign keys but lose their weights and active flag;
+  // the model page lists only models that have weights.
+  const keep = MODELS.map((m) => m.name);
+  const stale = `name NOT IN (${keep.map(() => '?').join(',')})`;
+  db.prepare(`DELETE FROM model_versions WHERE ${stale}
+    AND model_id NOT IN (SELECT model_id FROM shopping_sessions WHERE model_id IS NOT NULL)
+    AND model_id NOT IN (SELECT DISTINCT model_id FROM frames WHERE model_id IS NOT NULL)`).run(...keep);
+  db.prepare(`UPDATE model_versions SET weights_path = NULL, is_active = 0 WHERE ${stale}`).run(...keep);
+  // Activate the default model only on a fresh database (or when the active one was retired above);
+  // never override an admin's later choice.
   const hasActive = db.prepare('SELECT 1 FROM model_versions WHERE is_active = 1').get();
   if (!hasActive) {
     db.prepare("UPDATE model_versions SET is_active = 1, activated_at = CURRENT_TIMESTAMP WHERE name = ?").run(ACTIVE_MODEL);

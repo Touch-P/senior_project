@@ -118,7 +118,7 @@ describe('pipeline end to end (mock inference)', () => {
     srv = await startServer({
       pipeline: true,
       inference: (db) => createMockInference({ scenarios, force: 'cart-b-01',
-        active: () => ({ name: 'yolo11s-s0-20261025', names: [] }) }),
+        active: () => ({ name: 'yolo11s-20261104', names: [] }) }),
     });
     admin = client(srv.base);
     await admin.login(ADMIN);
@@ -211,7 +211,7 @@ describe('pipeline end to end (mock inference)', () => {
   test('a full queue drops the oldest frame and records it as dropped', async () => {
     const slow = await startServer({
       pipeline: true,
-      inference: () => createMockInference({ scenarios, force: 'cart-b-01', latencyMs: 60, active: () => ({ name: 'yolo11s-s0-20261025', names: [] }) }),
+      inference: () => createMockInference({ scenarios, force: 'cart-b-01', latencyMs: 60, active: () => ({ name: 'yolo11s-20261104', names: [] }) }),
     });
     try {
       const a = client(slow.base);

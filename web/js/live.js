@@ -88,8 +88,8 @@ const Live = (() => {
   /** Login page chips from the server instead of the prototype's fixed numbers (brief 10). */
   function statChips() {
     const m = L.meta?.active_model;
-    return [m ? `mAP50-95 ${m.map50_95.toFixed(3)}` : 'mAP50-95 —', m?.latency_p95_ms ? `Latency p95 ${m.latency_p95_ms} ms` : 'Latency p95 —',
-      `${L.meta?.products ?? '—'} สินค้า · โมเดลรู้จัก ${L.meta?.products_in_model ?? '—'}`, 'RTX 5090 benchmark'];
+    return [m?.map50_95 != null ? `mAP50-95 ${m.map50_95.toFixed(3)}` : 'mAP50-95 -', m?.latency_p95_ms ? `Latency p95 ${m.latency_p95_ms} ms` : 'Latency p95 -',
+      `${L.meta?.products ?? '—'} สินค้า · โมเดลรู้จัก ${L.meta?.products_in_model ?? '—'}`];
   }
 
   return { boot, login, logout, demoAccounts, refreshMeta, statChips, get meta() { return L.meta; } };

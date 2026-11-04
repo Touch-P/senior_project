@@ -90,7 +90,7 @@ describe('Live view gets the frame ratio and unchanged boxes', () => {
     const fixed = { name: 'fixed', loop: true, infer_ms: 1, frames: [{ detections: [
       { class_name: 'lay_big_ori', conf: 0.9, x1: 0.1, y1: 0.2, x2: 0.4, y2: 0.6 }] }] };
     srv = await startServer({ pipeline: true, cfg: { LIVE_THROTTLE_MS: 0 },
-      inference: () => createMockInference({ scenarios: new Map([['fixed', fixed]]), force: 'fixed', active: () => ({ name: 'yolo11s-s0-20261025', names: [] }) }) });
+      inference: () => createMockInference({ scenarios: new Map([['fixed', fixed]]), force: 'fixed', active: () => ({ name: 'yolo11s-20261104', names: [] }) }) });
     admin = client(srv.base);
     await admin.login(ADMIN);
     token = (await admin.post('/api/admin/carts/B-01/device-token')).json.token;

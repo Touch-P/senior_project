@@ -5,7 +5,7 @@
 ```powershell
 npm install
 npm run db:init   # รัน db/migrations/*.sql ที่ยังไม่เคยรัน บันทึกใน schema_migrations
-npm run db:seed   # สินค้า 20 รายการ, ราคา, สาขา, รถเข็น 17 คัน, โมเดล 10 รุ่น, บัญชี admin
+npm run db:seed   # สินค้า 20 รายการ, ราคา, สาขา, รถเข็น 17 คัน, โมเดลตาม `web/models-data.js`, บัญชี admin
 ```
 
 ทั้งสองคำสั่งรันซ้ำได้ (idempotent) และ server จะรัน seed ทุกครั้งที่ start
@@ -36,7 +36,8 @@ npm run db:seed   # สินค้า 20 รายการ, ราคา, ส�
 - รถเข็น active ได้ครั้งละ 1 session (`ux_sessions_active_cart`), โมเดล active ได้ครั้งละ 1 รุ่น (`ux_model_active`)
 - `products.in_model` คำนวณจาก `model.names` ของโมเดลที่ active (จาก `/health` ของ inference ถ้ารันอยู่ ไม่งั้นใช้ `model_versions.class_names`) — เปลี่ยน weights เป็น 20 คลาสแล้วไม่ต้องแก้โค้ด
 - seed ไม่ทับสิ่งที่ admin แก้: สินค้าที่มีแถวใน `product_audit` และราคาที่มี `created_by` จะไม่ถูก CSV เขียนทับ; โมเดลที่ admin เลือกไว้ไม่ถูกเปลี่ยนกลับ; รหัสผ่านที่มีอยู่แล้วไม่ถูก reset
-- `model_versions.weights_path` เป็น path สัมพัทธ์กับ `WEIGHTS_ROOT` (โฟลเดอร์ SNP แบบอ่านอย่างเดียว)
+- `model_versions.weights_path` เป็น path สัมพัทธ์กับ `WEIGHTS_ROOT` (ค่าเริ่ม `models/` แบบอ่านอย่างเดียว เช่น `v11/best.pt`)
+- `model_versions` seed จาก `web/models-data.js` (ไฟล์เดียวกับที่หน้า "โมเดล" ใช้ใน mock mode; สร้างจาก `models/*/*-test-metrics.json` ด้วย `node scripts/build-model-data.js`) รุ่นที่ไม่อยู่ในไฟล์ถูกลบ ถ้า session/frame เก่ายังอ้างถึงจะเก็บแถวไว้แต่ตั้ง `weights_path = NULL` และไม่แสดงบนหน้า
 
 ## เทียบกับ instruction ภาค 2 หัวข้อ 2.7
 
@@ -73,7 +74,7 @@ npm run db:seed   # สินค้า 20 รายการ, ราคา, ส�
 | `product_prices.is_current`, `created_by`, CHECK ราคา | — | มี | ตั้งใจ | SCD2 หาแถวปัจจุบันเร็ว, รู้ว่าใครแก้, promo < price |
 | `model_versions.model_version_id`, `yolo_family`, `deployed_at` | ชื่อนี้ | `model_id`, `family`, `activated_at` | ตั้งใจ | ชื่อ |
 | `model_versions.imgsz` | มี | ไม่มี | **พลาด** | เพิ่มแล้ว (ค่าเริ่ม 640) — เป็นปัจจัยใน matrix latency หัวข้อ 3.2 |
-| `model_versions` metrics | — | `class_names`, `map50_95`, `latency_p95_ms`, `params`, `gflops` | ตั้งใจ | หน้า "โมเดล" และ `in_model` |
+| `model_versions` metrics | — | `class_names`, `map50_95`, `map50`, `precision`, `recall`, `per_class`, `latency_p95_ms`, `params`, `gflops` (`007_model_metrics.sql`; NULL = ไม่มีในไฟล์ metrics แสดงเป็น "-") | ตั้งใจ | หน้า "โมเดล" และ `in_model` |
 | `shopping_sessions.store_id` | มี | ไม่มี | ตั้งใจ | หาได้จาก `carts.store_id` (เก็บที่เดียว ไม่ซ้ำซ้อน) — ไม่ต้องแก้ตารางนี้ |
 | `shopping_sessions.started_at`, `ended_at` | TEXT | `started_at_ms`, `ended_at_ms` | ตั้งใจ | ชนิดเวลา (ระยะเวลา session, เทียบกับ event) |
 | `shopping_sessions.model_version_id` | ชื่อนี้ | `model_id` | ตั้งใจ | ชื่อ |

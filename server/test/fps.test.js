@@ -87,7 +87,7 @@ describe('pipeline at 30 fps with ~25 ms inference', () => {
     const scenarios = loadScenarios(config.scenariosDir);
     const srv = await startServer({
       pipeline: true,
-      inference: () => createMockInference({ scenarios, force: 'cart-b-01', latencyMs: 25, active: () => ({ name: 'yolo11s-s0-20261025', names: [] }) }),
+      inference: () => createMockInference({ scenarios, force: 'cart-b-01', latencyMs: 25, active: () => ({ name: 'yolo11s-20261104', names: [] }) }),
     });
     try {
       const admin = client(srv.base);

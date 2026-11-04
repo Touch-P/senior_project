@@ -1,4 +1,4 @@
-// ข้อมูลตัวอย่าง — สินค้า 11 คลาสจากโมเดล, ราคาเป็นค่าตัวอย่าง
+// ข้อมูลตัวอย่างสำหรับ mock mode (?mock=1) — สินค้า 11 รายการ (ส่วนหนึ่งของ 20 คลาสของโมเดล), ราคาเป็นค่าตัวอย่าง
 const PRODUCTS = {
   bengbeng_pack12:        { name: 'เบงเบง เวเฟอร์ แพ็ก 12 ชิ้น', price: 59, sku: 'SN-BBG-012' },
   doritos_mid_nacho:      { name: 'โดริโทส รสนาโชชีส ขนาดกลาง', price: 30, sku: 'SN-DRT-NCM' },
@@ -41,25 +41,18 @@ const CARTS = [
     boxes: [[.29, .72, .54, .995, 'lay_big_nori', .96, 's']] },
 ];
 
-// model_versions — mAP50-95 และ latency p95 จริงจาก Desktop\SNP (test 139 ภาพ, RTX 5090)
-const MODELS = [
-  { name: 'yolo11s-s0-20261025', family: 'YOLO11', size: 's', format: 'pt', map: .916, p95: 4.20, params: '9.43M', gflops: 21.7 },
-  { name: 'yolo12s-s0-20261025', family: 'YOLO12', size: 's', format: 'pt', map: .916, p95: 5.81, params: '9.26M', gflops: 23.5 },
-  { name: 'yolov10s-s0-20261025', family: 'YOLOv10', size: 's', format: 'pt', map: .913, p95: 4.63, params: '8.07M', gflops: 24.9 },
-  { name: 'yolov13s-s0-20261025', family: 'YOLOv13', size: 's', format: 'pt', map: .911, p95: 8.79, params: '9.56M', gflops: 21.7 },
-  { name: 'yolov8s-s0-20261025', family: 'YOLOv8', size: 's', format: 'pt', map: .894, p95: 3.45, params: '11.14M', gflops: 28.7 },
-  { name: 'yolo26s-s0-20261025', family: 'YOLO26', size: 's', format: 'pt', map: .894, p95: 5.56, params: '9.96M', gflops: 22.8 },
-  { name: 'yolov5su-s0-20261025', family: 'YOLOv5', size: 'su', format: 'pt', map: .885, p95: 4.20, params: '9.13M', gflops: 24.1 },
-  { name: 'yolov6s-s0-20261025', family: 'YOLOv6', size: 's', format: 'pt', map: .868, p95: 4.15, params: '20.10M', gflops: null },
-  { name: 'yolov7-tiny-s0-20261025', family: 'YOLOv7', size: 'tiny', format: 'pt', map: .767, p95: 3.62, params: '6.03M', gflops: null },
-  { name: 'yolov4-s0-20261025', family: 'YOLOv4', size: '—', format: 'weights', map: .280, p95: 6.44, params: '—', gflops: null },
-];
+// model_versions — มาจาก models-data.js ไฟล์เดียว (สร้างจาก models/*/*-test-metrics.json ด้วย scripts/build-model-data.js)
+// ค่าที่ไม่มีในไฟล์ metrics เป็น null และหน้าเว็บแสดงเป็น "-"
+const fmtParams = n => (n == null ? null : (n / 1e6).toFixed(2) + 'M');
+const MODELS = MODEL_DATA.models.map(m => ({
+  name: m.name, family: m.family, size: m.size ?? '—', format: m.format,
+  map: m.map50_95, map50: m.map50, precision: m.precision, recall: m.recall, p95: m.latency_p95_ms,
+  params: fmtParams(m.params), gflops: m.gflops, perClass: m.per_class, nc: m.per_class.length,
+}));
+const DEFAULT_MODEL = MODEL_DATA.default_active;
 
-const MODEL_HISTORY = [
-  { at: '25 ต.ค. 22:10', from: 'yolov8s-s0-20261025', to: 'yolo11s-s0-20261025', by: 'สมชาย (admin)', result: 'สำเร็จ · 18 วิ', tone: 'success' },
-  { at: '22 ต.ค. 10:02', from: 'yolov5su-s0-20261025', to: 'yolov8s-s0-20261025', by: 'สมชาย (admin)', result: 'สำเร็จ · 21 วิ', tone: 'success' },
-  { at: '20 ต.ค. 15:40', from: 'yolov8s-s0-20261025', to: 'yolov5su-s0-20261025', by: 'ระบบ (auto)', result: 'ย้อนกลับ · p95 สูง', tone: 'warning' },
-];
+// ประวัติการสลับโมเดลมาจากระบบจริง (job_runs) เท่านั้น — โหมด mock เริ่มว่าง
+const MODEL_HISTORY = [];
 
 const SESSIONS = [
   ['8f1c…0742', 'A-07', '14:32', '10:12', 7, 201, null, 'active'],

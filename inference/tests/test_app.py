@@ -12,9 +12,12 @@ import app as service
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMERA = ROOT / "web" / "assets" / "camera"
-CLASSES_11 = [
-    "bengbeng_pack12", "doritos_mid_nacho", "koalas_march_chocolate", "kohkae_small_wasabi", "lay_big_nori",
-    "lay_big_ori", "lay_party_ori", "mama_cup_ok_cheeseGo", "mama_cup_ok_hotKR", "pringles_norm_ori", "rosdee_mid_pork",
+CLASSES = [
+    "babimild_double_milk", "babimild_sweety_pink", "babimild_white_sakura", "bengbeng_pack12", "doritos_mid_nacho",
+    "kirei_refill_floral", "kirei_refill_lavender", "kirei_refill_ori", "kirei_refill_peach",
+    "koalas_march_chocolate", "kohkae_small_wasabi", "lay_big_nori", "lay_big_ori", "lay_big_rock_ori",
+    "lay_party_ori", "mama_cup_ok_cheeseGo", "mama_cup_ok_hotKR", "pringles_norm_ori", "pringles_norm_sourcream",
+    "rosdee_mid_pork",
 ]
 
 pytestmark = pytest.mark.skipif(not Path(service.S.model_path).is_file(), reason="MODEL_PATH weights not found")
@@ -30,12 +33,12 @@ def jpeg(name="img-1321.jpg") -> bytes:
     return (CAMERA / name).read_bytes()
 
 
-def test_health_lists_the_11_trained_classes(client):
+def test_health_lists_the_20_trained_classes(client):
     h = client.get("/health").json()
     assert h["status"] == "ok"
-    assert h["model"] == "yolo11s-s0-20261025"
-    assert h["names"] == CLASSES_11
-    assert h["nc"] == 11
+    assert h["model"] == "yolo11s-20261104"
+    assert h["names"] == CLASSES
+    assert h["nc"] == 20
     assert h["device"] in ("cpu", "cuda:0")
     assert h["warmup_ms"] > 0
 
@@ -45,7 +48,7 @@ def test_infer_raw_jpeg_returns_normalised_boxes(client):
     assert r.status_code == 200
     body = r.json()
     assert body["seq"] == 7 and body["cart_id"] == "A-08"
-    assert body["model"] == "yolo11s-s0-20261025"
+    assert body["model"] == "yolo11s-20261104"
     assert body["infer_ms"] > 0
     names = sorted(d["class_name"] for d in body["detections"])
     # web/assets/camera/img-1321.jpg is the A-08 basket of the prototype
@@ -91,7 +94,7 @@ def test_model_switch_is_limited_to_weights_root(client, tmp_path):
     assert r.status_code == 404
     r = client.post("/model", json={"path": str(service.S.weights_root / "README_YOLOV.md")})
     assert r.status_code == 422 and r.json()["error"] == "UNSUPPORTED_FORMAT"
-    assert client.get("/health").json()["model"] == "yolo11s-s0-20261025", "failed switches keep the current model"
+    assert client.get("/health").json()["model"] == "yolo11s-20261104", "failed switches keep the current model"
 
 
 def test_every_prediction_runs_on_the_one_warm_gpu_thread(client, monkeypatch):

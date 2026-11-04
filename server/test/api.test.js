@@ -70,7 +70,7 @@ describe('auth', () => {
 
 describe('roles', () => {
   const sample = (path) => path
-    .replace(':label', 'A-07').replace(':name', 'yolov8s-s0-20261025').replace(':id', '00000000-0000-4000-8000-000000000000');
+    .replace(':label', 'A-07').replace(':name', 'yolo26s-20261104').replace(':id', '00000000-0000-4000-8000-000000000000');
   const bodies = { 'PUT /api/admin/carts/:label/roi': { roi_polygon: [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]] } };
 
   it('registers the admin-only routes', () => {
@@ -97,7 +97,7 @@ describe('roles', () => {
       assert.ok(![401, 403].includes(res.status), `${route} -> ${res.status}`);
     }
     // the loop activated another model; restore the default for later tests
-    assert.equal((await admin.post('/api/admin/models/yolo11s-s0-20261025/activate')).status, 200);
+    assert.equal((await admin.post('/api/admin/models/yolo11s-20261104/activate')).status, 200);
   });
 
   it('staff can still read shared pages', async () => {
@@ -108,7 +108,7 @@ describe('roles', () => {
       assert.equal((await staff.get(p)).status, 200, p);
     }
     const products = (await staff.get('/api/products')).json;
-    assert.deepEqual(products.counts, { total: 20, in_model: 11 });
+    assert.deepEqual(products.counts, { total: 20, in_model: 20 });
   });
 });
 
@@ -135,8 +135,8 @@ describe('request hygiene', () => {
     assert.match(await page.text(), /<div id="app">/);
     const meta = await (await fetch(srv.base + '/api/meta')).json();
     assert.equal(meta.products, 20);
-    assert.equal(meta.products_in_model, 11);
-    assert.equal(meta.active_model.name, 'yolo11s-s0-20261025');
+    assert.equal(meta.products_in_model, 20);
+    assert.equal(meta.active_model.name, 'yolo11s-20261104');
   });
 });
 

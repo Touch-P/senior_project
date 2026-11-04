@@ -144,7 +144,7 @@ describe('admin product search (brief 8)', () => {
     const msg = await watcher.next('products_changed');
     assert.equal(msg.product_id, pid);
     // the FTS index follows the rename
-    assert.equal((await search('ออริจินัล')).json.results[0].class_name, 'lay_big_ori');
+    assert.equal((await search('เลย์ ออริจินัล ห่อใหญ่')).json.results[0].class_name, 'lay_big_ori');
     assert.equal(res.json.audit.filter((a) => a.action === 'UPDATE').length, 1, 'unchanged fields are not audited');
     watcher.ws.close();
   });

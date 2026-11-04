@@ -178,7 +178,7 @@ CREATE TABLE product_prices (               -- ประวัติราคา
 
 CREATE TABLE model_versions (
   model_version_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name           TEXT,                      -- yolo11s-s0-20261025
+  name           TEXT,                      -- yolo11s-20261104
   yolo_family    TEXT, size TEXT,
   weights_path   TEXT, format TEXT,         -- pt / engine / onnx
   imgsz          INTEGER, conf_threshold REAL,

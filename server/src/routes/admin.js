@@ -144,9 +144,14 @@ export function adminRoutes({ db, hub, inference, log }) {
 
   // ---------------------------------------------------------------- models
   r.get('/models', (req, res) => {
-    const models = db.prepare(`SELECT name, family, size, format, imgsz, map50_95, latency_p95_ms, params, gflops,
-        conf_threshold, is_active, activated_at FROM model_versions ORDER BY map50_95 DESC, latency_p95_ms`).all()
-      .map((m) => ({ ...m, is_active: Boolean(m.is_active) }));
+    // retired models (weights_path NULL, kept only for old sessions' foreign keys) are not listed
+    const models = db.prepare(`SELECT name, family, size, format, imgsz, map50_95, map50, precision, recall, latency_p95_ms,
+        params, gflops, per_class, class_names, conf_threshold, is_active, activated_at
+      FROM model_versions WHERE weights_path IS NOT NULL ORDER BY map50_95 DESC, latency_p95_ms`).all()
+      .map(({ per_class, class_names, ...m }) => ({
+        ...m, is_active: Boolean(m.is_active),
+        per_class: per_class ? JSON.parse(per_class) : [], nc: class_names ? JSON.parse(class_names).length : null,
+      }));
     res.json({ models, history: switchHistory(db) });
   });
 

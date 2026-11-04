@@ -1,0 +1,241 @@
+{
+  "name": "yolo11s-s1-20261104",
+  "model_key": "v11",
+  "model_name": "yolo11s",
+  "weights": "yolo11s.pt",
+  "seed": 1,
+  "run_date": "20261104",
+  "batch": 64,
+  "epochs_requested": 100,
+  "epochs_completed": 100,
+  "best_epoch": 85,
+  "train_seconds": 1148.8,
+  "smoke": false,
+  "pilot": false,
+  "protocol": {
+    "imgsz": 640,
+    "patience": 0,
+    "optimizer": "SGD",
+    "lr0": 0.01,
+    "momentum": 0.937,
+    "weight_decay": 0.0005,
+    "deterministic": true,
+    "workers": 8,
+    "cache": false,
+    "fraction": null,
+    "augmentation": "ultralytics-default",
+    "eval": {
+      "conf": 0.001,
+      "max_det": 300,
+      "save_json": true,
+      "plots": true
+    }
+  },
+  "data_yaml": "/root/real_model/v11/runs/_data/data.yaml",
+  "env": {
+    "python": "3.12.15",
+    "platform": "Linux-5.15.0-173-generic-x86_64-with-glibc2.39",
+    "ultralytics": "8.4.202",
+    "wandb": "0.31.0",
+    "torch": "2.14.1+cu130",
+    "cuda": "13.0",
+    "cudnn": 92400,
+    "cuda_available": true,
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "gpu_mem_gb": 31.4,
+    "nvidia_driver": "580.142"
+  },
+  "finished_at": "2026-11-04T17:58:24+00:00",
+  "split": "test",
+  "map50_95": 0.9188736552938315,
+  "map50": 0.9946666666666669,
+  "precision": 0.9926035803680116,
+  "recall": 0.9953780734619899,
+  "per_class": [
+    {
+      "id": 0,
+      "name": "babimild_double_milk",
+      "ap50_95": 0.9052154138431229,
+      "ap50": 0.995,
+      "precision": 0.9978839739466454,
+      "recall": 1.0,
+      "instances": 26
+    },
+    {
+      "id": 1,
+      "name": "babimild_sweety_pink",
+      "ap50_95": 0.9123666666666667,
+      "ap50": 0.995,
+      "precision": 0.9964750950374042,
+      "recall": 1.0,
+      "instances": 18
+    },
+    {
+      "id": 2,
+      "name": "babimild_white_sakura",
+      "ap50_95": 0.9177500000000001,
+      "ap50": 0.995,
+      "precision": 0.9970715715491854,
+      "recall": 1.0,
+      "instances": 20
+    },
+    {
+      "id": 3,
+      "name": "bengbeng_pack12",
+      "ap50_95": 0.9605,
+      "ap50": 0.995,
+      "precision": 0.9958792792583495,
+      "recall": 1.0,
+      "instances": 14
+    },
+    {
+      "id": 4,
+      "name": "doritos_mid_nacho",
+      "ap50_95": 0.9249061403508773,
+      "ap50": 0.995,
+      "precision": 0.9454937148087252,
+      "recall": 1.0,
+      "instances": 19
+    },
+    {
+      "id": 5,
+      "name": "kirei_refill_floral",
+      "ap50_95": 0.9328296703296705,
+      "ap50": 0.995,
+      "precision": 0.9955725692316212,
+      "recall": 1.0,
+      "instances": 13
+    },
+    {
+      "id": 6,
+      "name": "kirei_refill_lavender",
+      "ap50_95": 0.9020119047619047,
+      "ap50": 0.995,
+      "precision": 0.9940368768963629,
+      "recall": 1.0,
+      "instances": 12
+    },
+    {
+      "id": 7,
+      "name": "kirei_refill_ori",
+      "ap50_95": 0.8540892857142859,
+      "ap50": 0.995,
+      "precision": 0.9962485192329912,
+      "recall": 1.0,
+      "instances": 15
+    },
+    {
+      "id": 8,
+      "name": "kirei_refill_peach",
+      "ap50_95": 0.891041958041958,
+      "ap50": 0.995,
+      "precision": 0.995519211371686,
+      "recall": 1.0,
+      "instances": 15
+    },
+    {
+      "id": 9,
+      "name": "koalas_march_chocolate",
+      "ap50_95": 0.9122499999999999,
+      "ap50": 0.995,
+      "precision": 0.996011294134988,
+      "recall": 1.0,
+      "instances": 16
+    },
+    {
+      "id": 10,
+      "name": "kohkae_small_wasabi",
+      "ap50_95": 0.9157500000000001,
+      "ap50": 0.995,
+      "precision": 0.9893380870797933,
+      "recall": 1.0,
+      "instances": 7
+    },
+    {
+      "id": 11,
+      "name": "lay_big_nori",
+      "ap50_95": 0.9163843137254901,
+      "ap50": 0.995,
+      "precision": 1.0,
+      "recall": 1.0,
+      "instances": 17
+    },
+    {
+      "id": 12,
+      "name": "lay_big_ori",
+      "ap50_95": 0.9012637261911308,
+      "ap50": 0.995,
+      "precision": 0.9931415795675429,
+      "recall": 1.0,
+      "instances": 33
+    },
+    {
+      "id": 13,
+      "name": "lay_big_rock_ori",
+      "ap50_95": 0.9738222222222221,
+      "ap50": 0.995,
+      "precision": 0.9956976449086719,
+      "recall": 1.0,
+      "instances": 15
+    },
+    {
+      "id": 14,
+      "name": "lay_party_ori",
+      "ap50_95": 0.9621055555555558,
+      "ap50": 0.9883333333333335,
+      "precision": 0.9912181842243387,
+      "recall": 0.9375,
+      "instances": 16
+    },
+    {
+      "id": 15,
+      "name": "mama_cup_ok_cheeseGo",
+      "ap50_95": 0.9174047619047618,
+      "ap50": 0.995,
+      "precision": 0.9930895163768446,
+      "recall": 1.0,
+      "instances": 8
+    },
+    {
+      "id": 16,
+      "name": "mama_cup_ok_hotKR",
+      "ap50_95": 0.9222125,
+      "ap50": 0.995,
+      "precision": 0.9949890155202435,
+      "recall": 1.0,
+      "instances": 16
+    },
+    {
+      "id": 17,
+      "name": "pringles_norm_ori",
+      "ap50_95": 0.9441428571428572,
+      "ap50": 0.995,
+      "precision": 0.9856827198292001,
+      "recall": 1.0,
+      "instances": 11
+    },
+    {
+      "id": 18,
+      "name": "pringles_norm_sourcream",
+      "ap50_95": 0.9030213675213675,
+      "ap50": 0.995,
+      "precision": 0.998722754385635,
+      "recall": 1.0,
+      "instances": 20
+    },
+    {
+      "id": 19,
+      "name": "rosdee_mid_pork",
+      "ap50_95": 0.9084047619047618,
+      "ap50": 0.995,
+      "precision": 1.0,
+      "recall": 0.9700614692397987,
+      "instances": 16
+    }
+  ],
+  "params": 9435532,
+  "gflops": 21.707,
+  "inference_mode": "NMS",
+  "nms_arg": null,
+  "hard_evaluated": false
+}

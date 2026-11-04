@@ -426,7 +426,7 @@ const LiveAdmin = (() => {
       const [m, inf] = await Promise.all([API.get('/api/admin/models'), API.get('/api/admin/inference')]);
       A.models = m; A.inference = inf;
       MODELS.length = 0;
-      for (const x of m.models) MODELS.push({ name: x.name, family: x.family, size: x.size ?? '—', format: x.format, map: x.map50_95 ?? 0, p95: x.latency_p95_ms ?? 0, params: x.params ?? '—', gflops: x.gflops });
+      for (const x of m.models) MODELS.push({ name: x.name, family: x.family, size: x.size ?? '—', format: x.format, map: x.map50_95, map50: x.map50, precision: x.precision, recall: x.recall, p95: x.latency_p95_ms, params: x.params, gflops: x.gflops, perClass: x.per_class ?? [], nc: x.nc ?? x.per_class?.length ?? null });
       state.activeModel = m.models.find((x) => x.is_active)?.name ?? state.activeModel;
       state.history = m.history.map((h) => ({ at: h.at.slice(5, 16), from: h.from ?? '—', to: h.to, by: h.by ?? '', result: h.status === 'ok' ? `สำเร็จ · ${(h.switch_ms / 1000).toFixed(1)} วิ` : `ไม่สำเร็จ · ${h.error}`, tone: h.status === 'ok' ? 'success' : 'danger' }));
     });

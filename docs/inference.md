@@ -31,8 +31,9 @@ npm run inference:test  # pytest กับ weights จริง
 | `INFERENCE_MODE` | `real` | Node |
 | `INFERENCE_URL` | `http://127.0.0.1:8001` | ทั้งคู่ (Python ใช้แค่ port) |
 | `INFERENCE_TIMEOUT_MS` | `2000` | Node: timeout ต่อเฟรม |
-| `MODEL_PATH` | `…/yolo11s-s0-20261025/weights/best.pt` | Python |
-| `WEIGHTS_ROOT` | `C:/Users/Acer/Desktop/SNP` | ทั้งคู่: `model_versions.weights_path` อ้างจากที่นี่ และ `POST /model` โหลดได้เฉพาะไฟล์ใต้โฟลเดอร์นี้ |
+| `MODEL_PATH` | `<repo>/models/v11/best.pt` | Python |
+| `MODEL_NAME` | ว่าง = `model_name-run_date` จาก `*-test-metrics.json` ข้าง weights (เช่น `yolo11s-20261104`) | Python: ชื่อที่ `/health` รายงาน ต้องตรงกับ `model_versions.name` |
+| `WEIGHTS_ROOT` | `<repo>/models` | ทั้งคู่: `model_versions.weights_path` อ้างจากที่นี่ และ `POST /model` โหลดได้เฉพาะไฟล์ใต้โฟลเดอร์นี้ |
 | `INFER_DEVICE` | `auto` (`cuda:0` ถ้ามี) | Python |
 | `INFER_IMGSZ` | `640` | Python |
 | `INFER_CONF` | `0.25` | Python: conf ขั้นต่ำที่ส่งกลับ (Node กรองจริงด้วย `conf_threshold` ของโมเดล) |
@@ -56,7 +57,7 @@ npm run inference:test  # pytest กับ weights จริง
     { "class_name": "bengbeng_pack12", "class_id": 0, "conf": 0.9438,
       "x1": 0.35313, "y1": 0.24271, "x2": 0.53906, "y2": 0.4724, "track_id": 1 }
   ],
-  "model": "yolo11s-s0-20261025", "infer_ms": 12.7,
+  "model": "yolo11s-20261104", "infer_ms": 12.7,
   "speed": { "preprocess": 1.2, "inference": 9.8, "postprocess": 1.7 },
   "w": 640, "h": 480, "cart_id": "A-08", "seq": 41, "decode_ms": 1.3
 }
@@ -74,17 +75,15 @@ Warm-up 10 ครั้ง **ต่อรูปร่างภาพ** ได้
 
 ## โมเดลที่ inference โหลดได้
 
-ทดสอบด้วย `POST /model` กับ weights ทั้ง 10 ชุดใน `SNP` (อ่านอย่างเดียว):
+ทดสอบด้วย `POST /model` กับ weights ทั้ง 3 ชุดใน `models/` (อ่านอย่างเดียว) — ทุกชุดโหลดได้ด้วย Ultralytics และรายงาน 20 คลาสตรงกับ `per_class` ในไฟล์ metrics:
 
-| โมเดล | ผล | หมายเหตุ |
+| โมเดล | weights | ผล |
 | --- | --- | --- |
-| yolo11s, yolo12s, yolov10s, yolov8s, yolo26s, yolov5su | โหลดได้ (45–100 ms + warm-up) | Ultralytics |
-| yolov13s | `MODEL_LOAD_FAILED` | ต้องใช้ fork ของ YOLOv13 (module `DSC3k2`) |
-| yolov6s | `MODEL_LOAD_FAILED` | checkpoint ต้องใช้ module `yolov6` ของ repo YOLOv6 ที่ใช้ train |
-| yolov7-tiny | `MODEL_LOAD_FAILED` | checkpoint ของ repo WongKinYiu |
-| yolov4 | `MODEL_UNSUPPORTED_FORMAT` | `.weights` ของ Darknet |
+| yolo11s-20261104 (active ตั้งต้น) | `models/v11/best.pt` | โหลดได้ |
+| yolo26s-20261104 | `models/v26/best.pt` | โหลดได้ |
+| yolov9s-20261104 | `models/v9/best.pt` | โหลดได้ |
 
-`POST /api/admin/models/:name/activate` สั่งโหลดก่อน แล้วค่อยเปลี่ยน `is_active` ใน DB เฉพาะเมื่อโหลดสำเร็จ จึงไม่มีทางที่โมเดลซึ่งรันไม่ได้จะกลายเป็น active ถ้าต้องการรัน 4 รุ่นหลังจริง ต้อง export เป็น ONNX ด้วย repo ของรุ่นนั้น ซึ่งอยู่นอกขอบเขตรอบนี้ (ห้ามแก้ weights เดิม)
+`POST /api/admin/models/:name/activate` สั่งโหลดก่อน แล้วค่อยเปลี่ยน `is_active` ใน DB เฉพาะเมื่อโหลดสำเร็จ จึงไม่มีทางที่โมเดลซึ่งรันไม่ได้จะกลายเป็น active weights ที่ Ultralytics โหลดไม่ได้จะได้ `MODEL_LOAD_FAILED` และโมเดลเดิมยังทำงานต่อ
 
 class names ของโมเดล active ถูกอ่านจาก weights ที่โหลดจริงแล้วเขียนลง `model_versions.class_names` และ `products.in_model` ทุกครั้ง ดังนั้นเมื่อมี weights 20 คลาส แค่เพิ่มแถวใน `model_versions` แล้ว activate ระบบก็ทำงานต่อได้โดยไม่ต้องแก้โค้ด
 

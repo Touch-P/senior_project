@@ -70,7 +70,7 @@ const state = {
   checkoutUntil: 0,
   user: null, loginEmail: 'admin@smartcart.co.th', loginPw: '', loginErr: false, attempts: 3,
   range: 1, liveFilter: 'all', toggles: { boxes: true, roi: true, outside: false },
-  activeModel: 'yolo11s-s0-20261025', modelModal: null, modelProgress: null, history: MODEL_HISTORY.slice(),
+  activeModel: DEFAULT_MODEL, modelModal: null, modelProgress: null, history: MODEL_HISTORY.slice(),
   selSession: SESSIONS[0][0],
   editProduct: 'lay_party_ori',
   priceHist: { lay_party_ori: [['฿69.00', '1 ต.ค. 2026 – ปัจจุบัน', true], ['฿65.00', '1 ก.ค. – 30 ก.ย. 2026'], ['฿62.00', '1 ม.ค. – 30 มิ.ย. 2026']] },
@@ -335,7 +335,7 @@ function viewLogin() {
       <div class="row gap-12"><div class="mark">${ic('cart', 24)}</div><span class="t-h2">Smart Cart</span></div>
       <div class="col gap-16"><h1 style="font-size:36px;line-height:48px;margin:0">ระบบผู้ดูแลรถเข็นอัจฉริยะ</h1>
         <p class="t-body-l" style="margin:0;opacity:.85">ติดตามรถเข็นแบบเรียลไทม์ วิเคราะห์การหยิบเข้า–ออก และจัดการโมเดล YOLO กับราคาสินค้าในที่เดียว</p>
-        <div class="row wrap gap-12">${(API.mock ? ['mAP50-95 0.916', 'Latency p95 4.2 ms', '11 สินค้า', 'RTX 5090 benchmark'] : Live.statChips()).map(s => `<span class="stat-chip">${s}</span>`).join('')}</div></div>
+        <div class="row wrap gap-12">${(API.mock ? mockStatChips() : Live.statChips()).map(s => `<span class="stat-chip">${s}</span>`).join('')}</div></div>
       <span class="t-cap" style="opacity:.7">© 2026 Smart Cart YOLO Research · ภาค 2</span>
     </section>
     <section style="display:grid;place-items:center;padding:48px 16px">
@@ -374,22 +374,27 @@ function lineChart({ vals, min, max, yl, xl, w = 640, h = 220, peak, peakLabel, 
 }
 function scatterChart(models, active) {
   const w = 300, h = 220, L = 36, T = 10, B = 26, R = 10, W = w - L - R, H = h - T - B;
-  const x0 = 3, x1 = 9, y0 = .75, y1 = .93;
+  const vis = models.filter(m => m.map != null && m.gflops != null);
+  if (!vis.length) return '<span class="t-cap muted">ไม่มีข้อมูล GFLOPs ในไฟล์ metrics</span>';
+  const ticks = (lo, hi, step) => { const t = []; for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + 1e-9; v += step) t.push(+v.toFixed(4)); return t; };
+  const gx = vis.map(m => m.gflops), gy = vis.map(m => m.map);
+  const x0 = Math.floor(Math.min(...gx) - 1), x1 = Math.ceil(Math.max(...gx) + 1);
+  const y0 = Math.floor((Math.min(...gy) - .004) * 100) / 100, y1 = Math.ceil((Math.max(...gy) + .004) * 100) / 100;
   const X = v => L + (v - x0) / (x1 - x0) * W, Y = v => T + H - (v - y0) / (y1 - y0) * H;
-  const vis = models.filter(m => m.map >= y0);
-  const sorted = vis.slice().sort((a, b) => a.p95 - b.p95 || b.map - a.map);
+  const sorted = vis.slice().sort((a, b) => a.gflops - b.gflops || b.map - a.map);
   const front = []; let best = -1; for (const m of sorted) if (m.map > best) { front.push(m); best = m.map; }
   let g = '';
-  [.93, .87, .81, .75].forEach(v => { g += `<line x1="${L}" x2="${L + W}" y1="${Y(v)}" y2="${Y(v)}" stroke="#E2E8F0"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v.toFixed(2)}</text>`; });
-  [3, 5, 7, 9].forEach(v => { g += `<text x="${X(v)}" y="${h - 6}" text-anchor="${v === 9 ? 'end' : 'middle'}">${v}${v === 9 ? ' ms' : ''}</text>`; });
-  const fp = front.map(m => `${X(m.p95).toFixed(1)},${Y(m.map).toFixed(1)}`);
+  ticks(y0, y1, .01).forEach(v => { g += `<line x1="${L}" x2="${L + W}" y1="${Y(v)}" y2="${Y(v)}" stroke="#E2E8F0"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v.toFixed(2)}</text>`; });
+  const xt = ticks(x0, x1, Math.max(1, Math.round((x1 - x0) / 4)));
+  xt.forEach((v, i) => { g += `<text x="${X(v)}" y="${h - 6}" text-anchor="${i === xt.length - 1 ? 'end' : 'middle'}">${v}</text>`; });
+  const fp = front.map(m => `${X(m.gflops).toFixed(1)},${Y(m.map).toFixed(1)}`);
   g += `<polyline points="${fp.join(' ')} ${L + W},${Y(front[front.length - 1].map).toFixed(1)}" fill="none" stroke="#16A34A" stroke-width="1.5" stroke-dasharray="4 4"/>`;
   for (const m of vis) {
-    const on = m.name === active, short = m.name.split('-').slice(0, m.name.includes('tiny') ? 2 : 1).join('-').replace('yolov', 'v').replace('yolo', 'v');
-    g += `<circle cx="${X(m.p95)}" cy="${Y(m.map)}" r="5" fill="${on ? '#16A34A' : '#2563EB'}" stroke="#fff" stroke-width="2"><title>${m.name} · mAP ${m.map.toFixed(3)} · p95 ${m.p95.toFixed(2)} ms</title></circle>`;
-    if (['v11s', 'v8s', 'v12s', 'v13s', 'v7-tiny', 'v6s'].includes(short) || on) g += `<text x="${Math.min(X(m.p95) + 7, L + W - 36)}" y="${Y(m.map) + (short === 'v8s' || short === 'v6s' ? 14 : -7)}" style="font-weight:600;fill:${on ? '#15803D' : '#64748B'}">${short}</text>`;
+    const on = m.name === active, short = m.name.split('-')[0].replace('yolov', 'v').replace('yolo', 'v');
+    g += `<circle cx="${X(m.gflops)}" cy="${Y(m.map)}" r="5" fill="${on ? '#16A34A' : '#2563EB'}" stroke="#fff" stroke-width="2"><title>${m.name} · mAP ${m.map.toFixed(3)} · ${m.gflops} GFLOPs</title></circle>`;
+    g += `<text x="${Math.min(X(m.gflops) + 7, L + W - 36)}" y="${Y(m.map) - 7}" style="font-weight:600;fill:${on ? '#15803D' : '#64748B'}">${short}</text>`;
   }
-  return `<svg class="chart" viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="กราฟ mAP50-95 เทียบ latency p95">${g}</svg>`;
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="กราฟ mAP50-95 เทียบ GFLOPs">${g}</svg>`;
 }
 
 // ---------- dashboard ----------
@@ -513,39 +518,54 @@ function deltaBadge(a, b, unit, lowerBetter, digits = 2) {
   const good = lowerBetter ? d < 0 : d > 0;
   return badge(good ? 'success' : 'warning', `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(digits)}${unit}`);
 }
+// ค่าที่ไม่มีในไฟล์ metrics (null) แสดงเป็น "-"
+const f3 = v => (v == null ? '-' : v.toFixed(3));
+const fMs = v => (v == null ? '-' : v.toFixed(2) + ' ms');
+const mockStatChips = () => { const m = MODELS.find(x => x.name === DEFAULT_MODEL); return [`mAP50-95 ${f3(m.map)}`, `${m.nc} คลาส`, m.name]; };
 function viewModels() {
-  const staff = isStaff(), act = MODELS.find(m => m.name === state.activeModel);
+  const staff = isStaff(), act = MODELS.find(m => m.name === state.activeModel) || MODELS[0];
   const prev = state.history[0] && state.history[0].from;
   const rollback = staff ? lockedBtn('secondary', 'm', 'ย้อนกลับรุ่นก่อนหน้า', 'ย้อนกลับโมเดลได้เฉพาะ admin', 'rollback')
-    : btn('secondary', 'm', 'ย้อนกลับรุ่นก่อนหน้า', `data-act="model-pick" data-name="${prev}" data-rollback="1"`, 'rollback');
+    : !prev || !MODELS.some(m => m.name === prev) ? lockedBtn('secondary', 'm', 'ย้อนกลับรุ่นก่อนหน้า', 'ยังไม่มีรุ่นก่อนหน้าให้ย้อนกลับ', 'rollback')
+      : btn('secondary', 'm', 'ย้อนกลับรุ่นก่อนหน้า', `data-act="model-pick" data-name="${prev}" data-rollback="1"`, 'rollback');
   const rows = MODELS.map(m => {
     const on = m.name === state.activeModel;
     const action = on ? `<span class="t-cap-strong" style="color:var(--success-text)">ใช้งานอยู่</span>`
       : staff ? lockedBtn('secondary', 'm', 'ใช้โมเดลนี้', 'เฉพาะผู้ดูแลระบบ (admin) เท่านั้นที่เปลี่ยนโมเดลได้')
         : btn('secondary', 'm', 'ใช้โมเดลนี้', `data-act="model-pick" data-name="${m.name}"`);
-    return `<tr class="${on ? 'sel' : ''}"><td class="${on ? 't-strong' : ''}">${m.name}</td><td>${m.family}</td><td>${m.size}</td><td>${m.format}</td>
-      <td class="r num">${m.map.toFixed(3)}</td><td class="r num">${m.p95.toFixed(2)} ms</td><td>${badge(on ? 'success' : 'neutral', on ? 'Active' : 'Standby')}</td><td class="r">${action}</td></tr>`;
+    return `<tr class="${on ? 'sel' : ''}"><td class="${on ? 't-strong' : ''}">${m.name}</td><td>${m.format}</td>
+      <td class="r num">${f3(m.map)}</td><td class="r num">${m.params ?? '-'}</td><td class="r num">${m.gflops ?? '-'}</td><td class="r num">${fMs(m.p95)}</td><td>${badge(on ? 'success' : 'neutral', on ? 'Active' : 'Standby')}</td><td class="r">${action}</td></tr>`;
   }).join('');
+  const metricRows = MODELS.map(m => `<tr class="${m.name === state.activeModel ? 'sel' : ''}"><td class="${m.name === state.activeModel ? 't-strong' : ''}">${m.name}</td><td class="r num">${f3(m.map)}</td><td class="r num">${f3(m.map50)}</td><td class="r num">${f3(m.precision)}</td><td class="r num">${f3(m.recall)}</td></tr>`).join('');
+  // AP50-95 ต่อคลาส: หนึ่งคอลัมน์ต่อรุ่น (ข้อมูลจาก per_class ในไฟล์ metrics)
+  const classNames = (act.perClass || []).map(c => c.name);
+  const apOf = (m, n) => (m.perClass || []).find(c => c.name === n);
+  const classRows = classNames.map(n => `<tr><td>${n}</td><td class="r num">${apOf(act, n)?.instances ?? '-'}</td>${MODELS.map(m => `<td class="r num ${m.name === act.name ? 't-strong' : ''}">${f3(apOf(m, n)?.ap50_95)}</td>`).join('')}</tr>`).join('');
   const hist = state.history.map(h => `<div class="col gap-4" style="padding:8px 0;border-bottom:1px solid var(--border)"><div class="row"><span class="t-strong grow">${h.from.split('-')[0]} → ${h.to.split('-')[0]}</span>${badge(h.tone, h.result)}</div><span class="t-cap muted">${h.at} · ${h.by}</span></div>`).join('');
+  const noGflops = MODELS.filter(m => m.gflops == null).length;
   return aShell('models', `
-    ${pageTitle('โมเดล', staff ? 'มุมมอง staff · ดูได้อย่างเดียว การเปลี่ยนโมเดลสงวนสิทธิ์ให้ admin' : 'model_versions · benchmark บน test set 139 ภาพ · latency p95 จาก RTX 5090 (batch 1, imgsz 640)', badge(staff ? 'neutral' : 'primary', staff ? 'อ่านอย่างเดียว' : 'Admin'))}
+    ${pageTitle('โมเดล', staff ? 'มุมมอง staff · ดูได้อย่างเดียว การเปลี่ยนโมเดลสงวนสิทธิ์ให้ admin' : `model_versions · benchmark บน test set · ${act.nc} คลาส`, badge(staff ? 'neutral' : 'primary', staff ? 'อ่านอย่างเดียว' : 'Admin'))}
     <div class="grid-side">
       <div class="col gap-16">
         <div class="card row gap-16" style="padding:16px 20px">
           <div class="icon-tile" style="background:var(--success-subtle);color:var(--success-text)">${ic('model', 24)}</div>
           <div class="grow col"><div class="row"><span class="t-h3">${act.name}</span>${badge('success', 'Active')}</div>
-            <span class="t-cap muted">${act.family} · ${act.size} · ${act.format} · conf 0.70 · ${act.params} params${act.gflops ? ` · ${act.gflops} GFLOPs` : ''}</span></div>
-          <div class="col" style="align-items:flex-end"><span class="t-h3 num">${act.map.toFixed(3)}</span><span class="t-cap muted">mAP50-95</span></div>
-          <div class="col" style="align-items:flex-end"><span class="t-h3 num">${act.p95.toFixed(2)} ms</span><span class="t-cap muted">p95</span></div>
+            <span class="t-cap muted">${act.family} · ${act.size} · ${act.format} · conf 0.70 · ${act.params ?? '-'} params${act.gflops ? ` · ${act.gflops} GFLOPs` : ''}</span></div>
+          <div class="col" style="align-items:flex-end"><span class="t-h3 num">${f3(act.map)}</span><span class="t-cap muted">mAP50-95</span></div>
+          <div class="col" style="align-items:flex-end"><span class="t-h3 num">${fMs(act.p95)}</span><span class="t-cap muted">p95</span></div>
           ${rollback}
         </div>
-        <div class="card card-pad">${cardHead('model_versions', '10 รุ่น · เรียงตาม mAP50-95')}
-          <div class="table-wrap"><table class="table"><thead><tr><th>ชื่อ</th><th>ตระกูล</th><th>ขนาด</th><th>Format</th><th class="r">mAP50-95</th><th class="r">Latency p95</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>
+        <div class="card card-pad">${cardHead('model_versions', `${MODELS.length} รุ่น · เรียงตาม mAP50-95`)}
+          <div class="table-wrap"><table class="table"><thead><tr><th>ชื่อ</th><th>Format</th><th class="r">mAP50-95</th><th class="r">Params</th><th class="r">GFLOPs</th><th class="r">Latency p95</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>
+        <div class="card card-pad">${cardHead('Metrics บน test set', 'ค่าจากไฟล์ metrics ของแต่ละรุ่น')}
+          <div class="table-wrap"><table class="table"><thead><tr><th>ชื่อ</th><th class="r">mAP50-95</th><th class="r">mAP50</th><th class="r">Precision</th><th class="r">Recall</th></tr></thead><tbody>${metricRows}</tbody></table></div></div>
+        <div class="card card-pad">${cardHead('AP50-95 ต่อคลาส', `test set · ${classNames.length} คลาส · ตัวหนา = รุ่นที่ใช้งานอยู่`)}
+          <div class="table-wrap"><table class="table"><thead><tr><th>คลาส</th><th class="r">instances</th>${MODELS.map(m => `<th class="r">${m.family}${m.size === '—' ? '' : m.size}</th>`).join('')}</tr></thead><tbody>${classRows}</tbody></table></div></div>
       </div>
       <div class="col gap-16">
-        <div class="card" style="padding:16px">${cardHead('mAP50-95 vs Latency p95', 'เส้นประเขียว = Pareto front')}${scatterChart(MODELS, state.activeModel)}
-          <span class="t-cap muted">YOLOv4 (0.280, 6.44 ms) อยู่นอกกรอบกราฟ</span></div>
-        <div class="card" style="padding:16px">${cardHead('ประวัติการสลับโมเดล', '')}${hist}</div>
+        <div class="card" style="padding:16px">${cardHead('mAP50-95 vs GFLOPs', 'เส้นประเขียว = Pareto front')}${scatterChart(MODELS, state.activeModel)}
+          <span class="t-cap muted">Latency p95 ยังไม่มีในไฟล์ metrics จึงเทียบกับ GFLOPs${noGflops ? ` · ${noGflops} รุ่นไม่มีค่า GFLOPs` : ''}</span></div>
+        <div class="card" style="padding:16px">${cardHead('ประวัติการสลับโมเดล', '')}${hist || '<span class="t-cap muted">ยังไม่มีการสลับโมเดล</span>'}</div>
       </div>
     </div>
     ${state.modelModal ? modelModal() : ''}${state.modelProgress ? progressModal() : ''}`);
@@ -553,10 +573,13 @@ function viewModels() {
 function modelModal() {
   const cur = MODELS.find(m => m.name === state.activeModel), nx = MODELS.find(m => m.name === state.modelModal.name);
   const rows = [
-    ['mAP50-95', cur.map.toFixed(3), nx.map.toFixed(3), deltaBadge(cur.map, nx.map, '', false, 3)],
-    ['Latency p95', cur.p95.toFixed(2) + ' ms', nx.p95.toFixed(2) + ' ms', deltaBadge(cur.p95, nx.p95, ' ms', true)],
-    ['Params', cur.params, nx.params, deltaBadge(parseFloat(cur.params), parseFloat(nx.params), 'M', true)],
-    ['GFLOPs', cur.gflops ?? '—', nx.gflops ?? '—', deltaBadge(cur.gflops, nx.gflops, '', true, 1)],
+    ['mAP50-95', f3(cur.map), f3(nx.map), deltaBadge(cur.map, nx.map, '', false, 3)],
+    ['mAP50', f3(cur.map50), f3(nx.map50), deltaBadge(cur.map50, nx.map50, '', false, 3)],
+    ['Precision', f3(cur.precision), f3(nx.precision), deltaBadge(cur.precision, nx.precision, '', false, 3)],
+    ['Recall', f3(cur.recall), f3(nx.recall), deltaBadge(cur.recall, nx.recall, '', false, 3)],
+    ['Latency p95', fMs(cur.p95), fMs(nx.p95), deltaBadge(cur.p95, nx.p95, ' ms', true)],
+    ['Params', cur.params ?? '-', nx.params ?? '-', deltaBadge(parseFloat(cur.params), parseFloat(nx.params), 'M', true)],
+    ['GFLOPs', cur.gflops ?? '-', nx.gflops ?? '-', deltaBadge(cur.gflops, nx.gflops, '', true, 1)],
     ['Format', cur.format, nx.format, badge('neutral', cur.format === nx.format ? 'เท่าเดิม' : 'เปลี่ยน')],
   ];
   return `<div class="backdrop" data-act="modal-close-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mm-title">
@@ -568,7 +591,7 @@ function modelModal() {
     <div class="row" style="justify-content:flex-end">${btn('secondary', 'm', 'ยกเลิก', 'data-act="modal-close"')}${btn('primary', 'm', state.modelModal.rollback ? 'ยืนยันย้อนกลับ' : 'ยืนยันเปลี่ยนโมเดล', 'data-act="model-confirm"')}</div>
   </div></div>`;
 }
-const STEPS = ['โหลด weights', 'ตรวจ checksum และ class map 11 คลาส', 'Warm-up 50 เฟรม', 'สลับ traffic ทุกรถเข็น', 'ตรวจ latency p95 ≤ 300 ms'];
+const STEPS = ['โหลด weights', `ตรวจ checksum และ class map ${MODELS[0].nc} คลาส`, 'Warm-up 50 เฟรม', 'สลับ traffic ทุกรถเข็น', 'ตรวจ latency p95 ≤ 300 ms'];
 function progressModal() {
   const p = state.modelProgress, step = Math.min(4, Math.floor(p.pct / 20));
   return `<div class="backdrop"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="pg-title">
@@ -596,7 +619,7 @@ function startSwitch() {
       clearInterval(progressTimer);
       const from = state.activeModel; state.activeModel = name; state.modelProgress = null;
       state.history.unshift({ at: 'วันนี้ ' + nowTime().slice(0, 5), from, to: name, by: `${state.user.name.split(' ')[0]} (admin)`, result: rollback ? 'ย้อนกลับ · สำเร็จ' : 'สำเร็จ · 5 วิ', tone: rollback ? 'warning' : 'success' });
-      toast('success', `สลับเป็น ${name.split('-')[0]} สำเร็จ · p95 ${MODELS.find(m => m.name === name).p95.toFixed(2)} ms`);
+      toast('success', `สลับเป็น ${name.split('-')[0]} สำเร็จ · p95 ${fMs(MODELS.find(m => m.name === name).p95)}`);
     }
     if (location.hash === '#/a/models') render();
   }, 200);

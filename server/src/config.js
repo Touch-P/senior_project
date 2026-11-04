@@ -30,8 +30,9 @@ const schema = z.object({
   MOCK_SCENARIO: z.string().default(''),
   MOCK_LATENCY_MS: num(0),
   // same default as inference/app.py; Python loads it at start, Node.js only checks it (doctor)
-  MODEL_PATH: z.string().default('C:/Users/Acer/Desktop/SNP/yolov11/outputv11/yolo11s-s0-20261025/weights/best.pt'),
-  WEIGHTS_ROOT: z.string().default('C:/Users/Acer/Desktop/SNP'),
+  MODEL_PATH: z.string().default(resolve(ROOT, 'models', 'v11', 'best.pt')),
+  // folder with the model weights; model_versions.weights_path is relative to it (read-only)
+  WEIGHTS_ROOT: z.string().default(resolve(ROOT, 'models')),
   CONF_THRESHOLD: num(0.7),
   TRACKER_MODE: z.enum(['frame', 'window', 'bytetrack']).default('window'),
   // presence + exit evidence + reason engine (brief 7); false = plain count changes for the RQ4 baseline

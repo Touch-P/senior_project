@@ -41,8 +41,12 @@ function logSwitch(db, status, info) {
 }
 
 export function switchHistory(db, limit = 10) {
-  return db.prepare("SELECT started_at, status, message FROM job_runs WHERE job = 'model_switch' ORDER BY run_id DESC LIMIT ?").all(limit)
-    .map((r) => ({ at: r.started_at, status: r.status, ...JSON.parse(r.message ?? '{}') }));
+  // switches that involve a retired model (no weights any more) stay in job_runs but are not shown
+  const current = new Set(db.prepare('SELECT name FROM model_versions WHERE weights_path IS NOT NULL').pluck().all());
+  return db.prepare("SELECT started_at, status, message FROM job_runs WHERE job = 'model_switch' ORDER BY run_id DESC").all()
+    .map((r) => ({ at: r.started_at, status: r.status, ...JSON.parse(r.message ?? '{}') }))
+    .filter((h) => current.has(h.to) && (h.from == null || current.has(h.from)))
+    .slice(0, limit);
 }
 
 /**

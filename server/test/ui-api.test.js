@@ -26,11 +26,11 @@ describe('endpoints behind the live UI (Phase 8)', () => {
   });
 
   test('model switches are listed in /models history (ok and failed)', async () => {
-    await admin.post('/api/admin/models/yolov8s-s0-20261025/activate');
-    await admin.post('/api/admin/models/yolo11s-s0-20261025/activate');
+    await admin.post('/api/admin/models/yolo26s-20261104/activate');
+    await admin.post('/api/admin/models/yolo11s-20261104/activate');
     const { history } = (await admin.get('/api/admin/models')).json;
-    assert.equal(history[0].to, 'yolo11s-s0-20261025');
-    assert.equal(history[0].from, 'yolov8s-s0-20261025');
+    assert.equal(history[0].to, 'yolo11s-20261104');
+    assert.equal(history[0].from, 'yolo26s-20261104');
     assert.equal(history[0].status, 'ok');
     assert.equal(history[0].by, 'สมชาย ใจดี');
   });

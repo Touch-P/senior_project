@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { after, before, describe, test } from 'node:test';
 import { config } from '../src/config.js';
-import { CLASSES_11 } from '../src/db/seed.js';
+import { CLASSES } from '../src/db/seed.js';
 import { createMockInference, createRealInference, InferenceError } from '../src/pipeline/inferClient.js';
 import { expandScenario, loadScenarios, ScenarioSchema } from '../src/pipeline/scenarios.js';
 import { syncActiveModel } from '../src/services/models.js';
@@ -18,7 +18,7 @@ describe('scenarios', () => {
       assert.ok(sc.frames.length > 0, sc.name);
       for (const f of sc.frames) {
         for (const d of f.detections) {
-          assert.ok(CLASSES_11.includes(d.class_name), `${sc.name}: unknown class ${d.class_name}`);
+          assert.ok(CLASSES.includes(d.class_name), `${sc.name}: unknown class ${d.class_name}`);
           for (const v of [d.x1, d.y1, d.x2, d.y2]) assert.ok(v >= 0 && v <= 1, `${sc.name}#${f.i}: box outside 0-1`);
           assert.ok(d.x2 > d.x1 && d.y2 > d.y1);
         }
@@ -55,7 +55,7 @@ describe('scenarios', () => {
 });
 
 describe('mock inference', () => {
-  const active = () => ({ name: 'yolo11s-s0-20261025', names: CLASSES_11 });
+  const active = () => ({ name: 'yolo11s-20261104', names: CLASSES });
 
   test('plays the scenario of each cart frame by frame and loops', async () => {
     const mock = createMockInference({ scenarios, active });
@@ -63,7 +63,7 @@ describe('mock inference', () => {
     const got = [];
     for (let i = 0; i < sc.frames.length + 2; i++) got.push(await mock.infer({ cart: 'A-08', seq: i }));
     assert.equal(got[0].scenario, 'cart-a-08');
-    assert.equal(got[0].model, 'yolo11s-s0-20261025');
+    assert.equal(got[0].model, 'yolo11s-20261104');
     assert.deepEqual(got.map((r) => r.frame).slice(0, 3), [0, 1, 2]);
     assert.equal(got.at(-1).frame, 1, 'loops back to the start');
     // A-08 event log: lay_big_nori goes in and out again (abandon) before koalas arrives
@@ -104,8 +104,8 @@ describe('mock inference', () => {
 
   test('health reports the active model from the database, device "mock"', async () => {
     const h = await createMockInference({ scenarios, active }).health();
-    assert.equal(h.model, 'yolo11s-s0-20261025');
-    assert.equal(h.nc, 11);
+    assert.equal(h.model, 'yolo11s-20261104');
+    assert.equal(h.nc, 20);
     assert.equal(h.device, 'mock');
   });
 });
@@ -113,8 +113,8 @@ describe('mock inference', () => {
 /** Fake Python service: lets the tests drive every answer without a GPU. */
 function fakeInference() {
   const calls = [];
-  const state = { model: 'yolov8s-s0-20261025', delayMs: 0, inferStatus: 200, inferBody: null, loadStatus: 200 };
-  const names = CLASSES_11;
+  const state = { model: 'yolo26s-20261104', delayMs: 0, inferStatus: 200, inferBody: null, loadStatus: 200 };
+  const names = CLASSES;
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const c of req) chunks.push(c);
@@ -203,43 +203,43 @@ describe('model switching through the API', () => {
   const active = () => srv.db.prepare('SELECT name FROM model_versions WHERE is_active = 1').pluck().get();
 
   test('start-up sync makes the service load the model active in the database', async () => {
-    assert.equal(fake.state.model, 'yolov8s-s0-20261025');
+    assert.equal(fake.state.model, 'yolo26s-20261104');
     const r = await syncActiveModel({ db: srv.db, inference: srv.inference });
-    assert.deepEqual(r, { ok: true, model: 'yolo11s-s0-20261025', loaded: true });
+    assert.deepEqual(r, { ok: true, model: 'yolo11s-20261104', loaded: true });
     const load = fake.calls.findLast((c) => c.path === '/model');
     const sent = JSON.parse(load.body.toString());
-    assert.equal(sent.name, 'yolo11s-s0-20261025');
-    assert.match(sent.path.replaceAll('\\', '/'), /SNP\/yolov11\/outputv11\/yolo11s-s0-20261025\/weights\/best\.pt$/);
-    assert.equal(fake.state.model, 'yolo11s-s0-20261025');
+    assert.equal(sent.name, 'yolo11s-20261104');
+    assert.match(sent.path.replaceAll('\\', '/'), /\/v11\/best\.pt$/);
+    assert.equal(fake.state.model, 'yolo11s-20261104');
   });
 
   test('activate loads the weights first, then switches the database', async () => {
-    const res = await admin.post('/api/admin/models/yolov10s-s0-20261025/activate');
+    const res = await admin.post('/api/admin/models/yolov9s-20261104/activate');
     assert.equal(res.status, 200);
-    assert.equal(res.json.from, 'yolo11s-s0-20261025');
-    assert.equal(res.json.to, 'yolov10s-s0-20261025');
-    assert.equal(res.json.detectable, 11);
-    assert.equal(active(), 'yolov10s-s0-20261025');
-    assert.equal(fake.state.model, 'yolov10s-s0-20261025');
+    assert.equal(res.json.from, 'yolo11s-20261104');
+    assert.equal(res.json.to, 'yolov9s-20261104');
+    assert.equal(res.json.detectable, 20);
+    assert.equal(active(), 'yolov9s-20261104');
+    assert.equal(fake.state.model, 'yolov9s-20261104');
   });
 
   test('a model the service cannot load is not activated (422) and the database is unchanged', async () => {
     fake.state.loadStatus = 422;
-    const res = await admin.post('/api/admin/models/yolov13s-s0-20261025/activate');
+    const res = await admin.post('/api/admin/models/yolo26s-20261104/activate');
     assert.equal(res.status, 422);
     assert.equal(res.json.error, 'MODEL_LOAD_FAILED');
     assert.match(res.json.detail, /DSC3k2/);
-    assert.equal(active(), 'yolov10s-s0-20261025');
+    assert.equal(active(), 'yolov9s-20261104');
     fake.state.loadStatus = 200;
   });
 
   test('service down: 503 INFERENCE_DOWN, database unchanged; /inference reports the state', async () => {
     await fake.close();
-    const res = await admin.post('/api/admin/models/yolo11s-s0-20261025/activate');
+    const res = await admin.post('/api/admin/models/yolo11s-20261104/activate');
     assert.equal(res.status, 503);
     assert.equal(res.json.error, 'INFERENCE_DOWN');
     assert.match(res.json.message, /inference/, 'deliberate 5xx errors keep their message');
-    assert.equal(active(), 'yolov10s-s0-20261025');
+    assert.equal(active(), 'yolov9s-20261104');
     const st = await admin.get('/api/admin/inference');
     assert.equal(st.status, 200);
     assert.equal(st.json.ok, false);
@@ -261,9 +261,9 @@ describe('mock mode through the API', () => {
     assert.equal(st.json.mode, 'mock');
     assert.equal(st.json.ok, true);
     assert.ok(st.json.health.scenarios.some((s) => s.name === 'cart-a-08' && s.default));
-    const res = await admin.post('/api/admin/models/yolov8s-s0-20261025/activate');
+    const res = await admin.post('/api/admin/models/yolo26s-20261104/activate');
     assert.equal(res.status, 200);
-    assert.equal((await admin.get('/api/admin/inference')).json.model, 'yolov8s-s0-20261025');
+    assert.equal((await admin.get('/api/admin/inference')).json.model, 'yolo26s-20261104');
     const health = await (await fetch(srv.base + '/api/health')).json();
     assert.equal(health.inference_mode, 'mock');
   });

@@ -14,6 +14,7 @@ Weights are opened read-only; nothing is written next to them.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import platform
@@ -78,10 +79,9 @@ WARMUP_RUNS = 10
 def _settings() -> SimpleNamespace:
     url = urlparse(os.environ.get("INFERENCE_URL", "http://127.0.0.1:8001"))
     return SimpleNamespace(
-        model_path=os.environ.get(
-            "MODEL_PATH", "C:/Users/Acer/Desktop/SNP/yolov11/outputv11/yolo11s-s0-20261025/weights/best.pt"
-        ),
-        weights_root=Path(os.environ.get("WEIGHTS_ROOT", "C:/Users/Acer/Desktop/SNP")).resolve(),
+        model_path=os.environ.get("MODEL_PATH", str(ROOT / "models" / "v11" / "best.pt")),
+        model_name=os.environ.get("MODEL_NAME") or None,
+        weights_root=Path(os.environ.get("WEIGHTS_ROOT", str(ROOT / "models"))).resolve(),
         device=os.environ.get("INFER_DEVICE", "auto"),
         imgsz=int(os.environ.get("INFER_IMGSZ", "640")),
         conf=float(os.environ.get("INFER_CONF", "0.25")),
@@ -101,7 +101,17 @@ def pick_device(pref: str) -> str:
 
 
 def model_name_from_path(path: Path) -> str:
-    """.../yolo11s-s0-20261025/weights/best.pt -> yolo11s-s0-20261025 (same as model_versions.name)."""
+    """Same name as model_versions.name.
+
+    models/v11/best.pt next to yolo11s-s1-20261104-test-metrics.json -> yolo11s-20261104 (model_name + run_date of
+    the metrics file; the seed is not part of the name), .../<run>/weights/best.pt -> <run>, otherwise the file stem.
+    """
+    for metrics in sorted(path.parent.glob("*-test-metrics.json")):
+        try:
+            m = json.loads(metrics.read_text(encoding="utf-8"))
+            return f"{m['model_name']}-{m['run_date']}"
+        except (OSError, ValueError, KeyError):
+            continue
     return path.parent.parent.name if path.parent.name == "weights" else path.stem
 
 
@@ -281,7 +291,7 @@ def warm_gpu_thread() -> float:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await run_in_threadpool(engine.load, S.model_path)
+    await run_in_threadpool(engine.load, S.model_path, S.model_name)
     log.info("gpu thread ready (first call %.0f ms)", await on_gpu_thread(warm_gpu_thread))
     yield
 

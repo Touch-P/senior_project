@@ -169,7 +169,7 @@ describe('live pipeline: admin sees the reason within 1 s of finalize (Phase 6 D
   before(async () => {
     srv = await startServer({
       pipeline: true,
-      inference: () => createMockInference({ scenarios, force: 'r01-brand-switch', active: () => ({ name: 'yolo11s-s0-20261025', names: [] }) }),
+      inference: () => createMockInference({ scenarios, force: 'r01-brand-switch', active: () => ({ name: 'yolo11s-20261104', names: [] }) }),
     });
     admin = client(srv.base);
     await admin.login(ADMIN);
@@ -210,7 +210,7 @@ describe('reasons in the admin API', () => {
   test('session detail, cart detail and /analytics/reasons expose reasons and hidden units', async () => {
     const srv = await startServer({
       pipeline: true,
-      inference: () => createMockInference({ scenarios, force: 'r07-occluded', active: () => ({ name: 'yolo11s-s0-20261025', names: [] }) }),
+      inference: () => createMockInference({ scenarios, force: 'r07-occluded', active: () => ({ name: 'yolo11s-20261104', names: [] }) }),
     });
     try {
       const admin = client(srv.base);

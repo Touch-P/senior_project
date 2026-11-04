@@ -193,7 +193,7 @@ describe('exports', () => {
     assert.deepEqual(label, [`${idx} 0.300000 0.400000 0.200000 0.400000`], 'unknown classes skipped, cx cy w h');
     assert.ok(existsSync(join(r.dir, 'images', `A-09_${sid.slice(0, 8)}_7.jpg`)));
     assert.match(readFileSync(join(r.dir, 'manifest.csv'), 'utf8'), /wrong_class,lay_big_ori/);
-    assert.match(readFileSync(join(r.dir, 'data.yaml'), 'utf8'), /nc: 11/);
+    assert.match(readFileSync(join(r.dir, 'data.yaml'), 'utf8'), /nc: 20/);
     assert.equal(db.prepare('SELECT status FROM user_feedback').pluck().get(), 'exported');
     assert.equal((await exportFeedback(db, { root: config.ROOT, outDir: out })).rows, 0);
     assert.equal((await exportFeedback(db, { root: config.ROOT, outDir: out, all: true })).rows, 1, '--all exports again');

@@ -8,7 +8,7 @@ import { config } from '../src/config.js';
 import { importProductMaster, parseCsv, readProductMaster, syncModelCoverage } from '../src/db/catalog.js';
 import { openDb } from '../src/db/connection.js';
 import { migrate } from '../src/db/migrate.js';
-import { CLASSES_11, seed } from '../src/db/seed.js';
+import { CLASSES, seed } from '../src/db/seed.js';
 
 async function freshDb() {
   const db = openDb(':memory:');
@@ -36,13 +36,13 @@ describe('migrations', () => {
 });
 
 describe('seed', () => {
-  it('loads 20 products, 11 detectable by the active model', async () => {
+  it('loads 20 products, all 20 detectable by the active model', async () => {
     const db = await freshDb();
     assert.equal(db.prepare('SELECT COUNT(*) FROM products').pluck().get(), 20);
-    assert.equal(db.prepare('SELECT COUNT(*) FROM products WHERE in_model = 1').pluck().get(), 11);
+    assert.equal(db.prepare('SELECT COUNT(*) FROM products WHERE in_model = 1').pluck().get(), 20);
     assert.deepEqual(db.prepare('SELECT class_name FROM products WHERE in_model = 1 ORDER BY class_name').pluck().all(),
-      [...CLASSES_11].sort());
-    assert.equal(db.prepare('SELECT name FROM model_versions WHERE is_active = 1').pluck().get(), 'yolo11s-s0-20261025');
+      [...CLASSES].sort());
+    assert.equal(db.prepare('SELECT name FROM model_versions WHERE is_active = 1').pluck().get(), 'yolo11s-20261104');
     assert.equal(db.prepare('SELECT COUNT(*) FROM carts').pluck().get(), 17);
     assert.equal(db.prepare("SELECT roi_polygon FROM carts WHERE label = 'A-07'").pluck().get(), '[[0.2,0.14],[0.8,0.14],[0.96,0.99],[0.04,0.99]]');
     assert.equal(db.prepare("SELECT COUNT(*) FROM admin_users WHERE role = 'staff'").pluck().get(), 0, 'no demo staff outside development');
@@ -60,9 +60,9 @@ describe('seed', () => {
   it('keeps the admin-chosen model active on re-seed', async () => {
     const db = await freshDb();
     db.prepare('UPDATE model_versions SET is_active = 0').run();
-    db.prepare("UPDATE model_versions SET is_active = 1 WHERE name = 'yolov8s-s0-20261025'").run();
+    db.prepare("UPDATE model_versions SET is_active = 1 WHERE name = 'yolo26s-20261104'").run();
     await seed(db, { probeInference: false });
-    assert.equal(db.prepare('SELECT name FROM model_versions WHERE is_active = 1').pluck().get(), 'yolov8s-s0-20261025');
+    assert.equal(db.prepare('SELECT name FROM model_versions WHERE is_active = 1').pluck().get(), 'yolo26s-20261104');
   });
 });
 
