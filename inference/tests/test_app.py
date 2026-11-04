@@ -92,3 +92,29 @@ def test_model_switch_is_limited_to_weights_root(client, tmp_path):
     r = client.post("/model", json={"path": str(service.S.weights_root / "README_YOLOV.md")})
     assert r.status_code == 422 and r.json()["error"] == "UNSUPPORTED_FORMAT"
     assert client.get("/health").json()["model"] == "yolo11s-s0-20261025", "failed switches keep the current model"
+
+
+def test_every_prediction_runs_on_the_one_warm_gpu_thread(client, monkeypatch):
+    """The first CUDA call on a new thread costs ~1.5 s (per-thread setup). Requests from FastAPI's threadpool land on
+    fresh threads (a session start sends DELETE /tracks together with its first /infer), which stalled that frame and
+    made the queue drop the next ones. All predictions must run on the single GPU thread warmed at start."""
+    import threading
+
+    names = []
+    real = service.engine.infer
+
+    def spy(*args):
+        names.append(threading.current_thread().name)
+        return real(*args)
+
+    monkeypatch.setattr(service.engine, "infer", spy)
+    threads = []
+    for n in range(4):
+        threads.append(threading.Thread(target=client.delete, args=(f"/tracks/S-0{n}",)))
+        threads.append(threading.Thread(target=client.post, args=(f"/infer?cart_id=S-0{n}&seq=1",),
+                                        kwargs={"content": jpeg(), "headers": {"content-type": "image/jpeg"}}))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(names) == 4 and len(set(names)) == 1 and names[0].startswith("gpu"), names

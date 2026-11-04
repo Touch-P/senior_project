@@ -8,6 +8,7 @@
 //
 // step() returns actions for the cart model to persist; it never touches the database.
 import { center, coverage, crossesEdge, distToEdge, distToEdgeAt, iou, nearestEdge, pointInPolygon, polygonSize } from './geometry.js';
+import { scaled } from './tracker.js';
 
 /**
  * @typedef {{ kind: 'add'|'remove'|'state'|'correction'|'flip_alert'|'flip_correct', unit: object, [k: string]: any }} Action
@@ -36,6 +37,22 @@ export function createPresenceEngine(opts = {}) {
   const unitNo = new Map();       // productId -> last unit_no used in this session
   const trackHist = new Map();    // local_track_id -> first centres (entry evidence)
   let frame = 0, nextUid = 1;
+  // frame-rate multiplier of every frame count (W, occludeAfter), from the tracker (tracker.js): 1 below 6 fps =
+  // the tuned 4 fps behaviour; 7.5 at 30 fps. Positions are compared every `sc` = round(scale) frames, so the
+  // movement checks below look at the same ~250 ms steps as at 4 fps.
+  let sc = 1;
+  /** n points of a history spaced sc frames apart, oldest first, ending at the newest point */
+  const lastSpaced = (hist, n) => {
+    const out = [];
+    for (let i = hist.length - 1; i >= 0 && out.length < n; i -= sc) out.unshift(hist[i]);
+    return out;
+  };
+  /** first n points of a history spaced sc frames apart */
+  const firstSpaced = (hist, n) => {
+    const out = [];
+    for (let i = 0; i < hist.length && out.length < n; i += sc) out.push(hist[i]);
+    return out;
+  };
 
   const active = (u) => u.state === 'IN_CART' || u.state === 'OCCLUDED';
   const countActive = (cls) => units.filter((u) => active(u) && u.className === cls).length;
@@ -49,7 +66,7 @@ export function createPresenceEngine(opts = {}) {
     const near = edgeDist(u.lastBox, roi) <= band || crossesEdge(u.lastBox, roi);
     // last 3-4 sightings: the distance to the edge the item leaves through (the edge nearest to the last
     // sighting) goes down — noise up to o.noise per step allowed, the last step strictly
-    const pts = u.hist.slice(-4);
+    const pts = lastSpaced(u.hist, 4);
     const edge = pts.length ? nearestEdge(pts.at(-1), roi) : 0;
     const h = pts.map((p) => distToEdgeAt(p, roi, edge));
     let outward = false;
@@ -62,8 +79,9 @@ export function createPresenceEngine(opts = {}) {
 
   /** Entry evidence of a new box: its first sighting was at the edge and it moved away from that edge. */
   function entryEvidence(det, roi, band) {
-    const pts = trackHist.get(det.local_track_id);
-    if (!pts || !pts.length) return false;
+    const all = trackHist.get(det.local_track_id);
+    if (!all || !all.length) return false;
+    const pts = firstSpaced(all, 6);
     const edge = nearestEdge(pts[0], roi);
     const h = pts.map((p) => distToEdgeAt(p, roi, edge));
     if (h[0] > band) return false;
@@ -83,10 +101,10 @@ export function createPresenceEngine(opts = {}) {
     u.lastSeenFrame = frame;
     if (d.local_track_id != null) u.trackId = d.local_track_id;
     u.hist.push(center(d.box));
-    if (u.hist.length > 8) u.hist.shift();
+    while (u.hist.length > 8 * sc) u.hist.shift();
     if (d.class_name === u.className) {
       u.confs.push(d.conf);
-      if (u.confs.length > 16) u.confs.shift();
+      while (u.confs.length > 16 * sc) u.confs.shift();
       u.flip = null;
     }
   }
@@ -103,11 +121,14 @@ export function createPresenceEngine(opts = {}) {
 
   /**
    * @param {{ t: number, dets: import('./postprocess.js').Det[], stable: Map<string, number>, roi: number[][],
-   *           catalog: Map<string, { product_id: number }> }} f
+   *           catalog: Map<string, { product_id: number }>, scale?: number }} f  scale = tracker frame-rate multiplier
    * @returns {{ actions: Action[] }}
    */
-  function step({ t, dets, stable, roi, catalog }) {
+  function step({ t, dets, stable, roi, catalog, scale = 1 }) {
     frame++;
+    const sf = scale > 1 ? scale : 1;
+    sc = Math.max(1, Math.round(sf));
+    const W = scaled(o.W, sf), occludeAfter = scaled(o.occludeAfter, sf);
     const actions = [];
     const band = o.edgeBand * polygonSize(roi);
     const accepted = dets.filter((d) => d.accepted);
@@ -115,7 +136,7 @@ export function createPresenceEngine(opts = {}) {
     for (const d of accepted) {
       if (d.local_track_id == null) continue;
       const h = trackHist.get(d.local_track_id) ?? [];
-      if (h.length < 6) h.push(center(d.box));
+      if (h.length < 6 * sc) h.push(center(d.box));
       trackHist.set(d.local_track_id, h);
     }
 
@@ -187,7 +208,7 @@ export function createPresenceEngine(opts = {}) {
       }
       const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
       const target = catalog.get(cand.class_name);
-      if (target && u.flip.frames >= 2 * o.W && avg(u.flip.confs) > avg(u.confs)) {
+      if (target && u.flip.frames >= 2 * W && avg(u.flip.confs) > avg(u.confs)) {
         // the new class is stable and more confident: the item was misclassified from the start
         const fromClass = u.className, fromProductId = u.productId;
         actions.push({ kind: 'flip_correct', unit: u, fromClass, fromProductId, toClass: cand.class_name, toProductId: target.product_id, at: t });
@@ -220,16 +241,16 @@ export function createPresenceEngine(opts = {}) {
       if (u.state === 'IN_CART') {
         if (u.exit) {
           const stableN = (stable.get(u.className) ?? 0) - (flipUsed.get(u.className) ?? 0);
-          if (u.missing >= 2 * o.W && stableN < countActive(u.className)) {
+          if (u.missing >= 2 * W && stableN < countActive(u.className)) {
             u.state = 'REMOVED';
             u.removedAt = t;
             actions.push({ kind: 'remove', unit: u, at: u.lastSeenT, confirmedAt: t, evidence: { ...u.exit, missing_frames: u.missing },
               qtyBefore: qtyOf(u.productId) + 1, qtyAfter: qtyOf(u.productId) });
-          } else if (u.missing >= 4 * o.W) {
+          } else if (u.missing >= 4 * W) {
             u.exit = null; // waited long enough without the count dropping: treat as hidden
           }
         }
-        if (!u.exit && u.state === 'IN_CART' && u.missing > o.occludeAfter) {
+        if (!u.exit && u.state === 'IN_CART' && u.missing > occludeAfter) {
           u.state = 'OCCLUDED';
           actions.push({ kind: 'state', unit: u, from: 'IN_CART', to: 'OCCLUDED', cause: 'NOT_SEEN', occludedBy: u.occludedBy, at: t });
         }

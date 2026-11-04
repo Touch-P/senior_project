@@ -24,6 +24,7 @@ export async function replayDb() {
 /**
  * @param {ReturnType<typeof import('./scenarios.js').loadScenarios> extends Map<any, infer S> ? S : never} sc expanded scenario
  * @param {{ mode?: 'frame'|'window'|'bytetrack', presence?: boolean, window?: number, addK?: number, checkout?: boolean,
+ *           fps?: number, refFps?: number,
  *           db?: import('better-sqlite3').Database, t0?: number }} [opts]
  */
 export async function replayScenario(sc, opts = {}) {
@@ -37,7 +38,7 @@ export async function replayScenario(sc, opts = {}) {
   const writer = createWriter(db);
   const cfg = { TRACKER_WINDOW: window, REASON_PAIR_WINDOW_MS: 60_000 };
   const model = (presence ? createPresenceModel : createSimpleCartModel)({ db, writer, hub, cfg, sessionId, cart });
-  const tracker = createTracker({ mode, window, addK });
+  const tracker = createTracker({ mode, window, addK, refFps: opts.refFps ?? 4 });
   const catalog = new Map(statements(db).catalog.all().map((p) => [p.class_name, p]));
   const t0 = opts.t0 ?? 1_800_000_000_000;
   const confThreshold = db.prepare('SELECT conf_threshold FROM model_versions WHERE is_active = 1').pluck().get() ?? 0.7;
@@ -49,7 +50,8 @@ export async function replayScenario(sc, opts = {}) {
     // only ByteTrack mode gets track ids from "inference" (the scenario object ids), as in real mode
     const raw = f.detections.map(({ id, track_id, ...d }) => (mode === 'bytetrack' ? { ...d, track_id } : d));
     const dets = postprocess(raw, { catalog, confThreshold, roi: DEFAULT_ROI });
-    const tr = tracker.update(dets);
+    // frame times drive the frame-rate scale (1 for the 4-5 fps scenarios); opts.fps = the camera's declared rate
+    const tr = tracker.update(dets, t, opts.fps);
     const out = model.update({ job: { t: { received: t }, seq: f.i }, tracker: tr, dets, catalog, roi: DEFAULT_ROI });
     if (out.events.length) writer.now((d) => out.persist(d, null));
     for (const m of out.messages ?? []) messages.push(m);

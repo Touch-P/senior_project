@@ -84,7 +84,8 @@ export function adminRoutes({ db, hub, inference, log }) {
   r.get('/carts/:label/latest.jpg', (req, res) => {
     const f = hub.getLatest(parse(Label, req.params.label));
     if (!f || Date.now() - f.t > LATEST_MAX_AGE_MS) throw new HttpError(404, 'NO_FRAME', 'ยังไม่มีภาพล่าสุดจากกล้องของรถเข็นนี้');
-    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store', 'X-Frame-Seq': String(f.seq), 'X-Frame-Time': String(f.t) });
+    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store', 'X-Frame-Seq': String(f.seq), 'X-Frame-Time': String(f.t),
+      ...(f.w && f.h ? { 'X-Frame-Width': String(f.w), 'X-Frame-Height': String(f.h) } : {}) });
     res.send(f.jpeg);
   });
 
