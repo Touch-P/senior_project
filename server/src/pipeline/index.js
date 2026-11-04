@@ -83,10 +83,15 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     c.lastFrameMs = f.tReceivedMs;
     c.device = f.ws ?? c.device;
     c.disconnectedAlerted = false;
+    // newest frame in memory for the Live grid thumbnail (hub.setLatest: replaced every frame, never written to disk)
+    const h = f.header ?? {};
+    hub.setLatest?.(f.cart, { seq: f.seq, jpeg: f.jpeg, t: f.tReceivedMs,
+      w: Number.isFinite(h.w) ? h.w : null, h: Number.isFinite(h.h) ? h.h : null });
     const session = syncSession(c);
     if (!session && !hub.isWatched?.(f.cart)) {
       // idle camera (no customer session, nobody watching): nothing is inferred or stored
       sendDevice(c, { type: 'processed', seq: f.seq, idle: true, t_server: Date.now() });
+      publishIdle(c, f);
       return;
     }
     const job = { ...f, sessionId: session?.id ?? null, t: { received: f.tReceivedMs } };
@@ -223,11 +228,28 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
   }
 
+  const countFrame = (c, now) => {
+    c.recent.push(now);
+    while (c.recent.length && now - c.recent[0] > 5000) c.recent.shift();
+  };
+  const liveFps = (c) => Math.round((c.recent.length / 5) * 10) / 10;
+
+  // idle camera: no inference, but the Live grid still gets a throttled "new frame" signal (seq) and loads
+  // GET /api/admin/carts/:label/latest.jpg itself; items are empty because no customer session runs
+  function publishIdle(c, f) {
+    const now = Date.now();
+    countFrame(c, now);
+    if (now - c.lastLiveMs < liveMs) return;
+    c.lastLiveMs = now;
+    hub.toAdmins({ type: 'live_update', event: 'frame', cart: c.label, session_id: null, idle: true, seq: f.seq,
+      state: null, fps: liveFps(c), detections: null, server_ms: now - f.tReceivedMs, infer_ms: null,
+      items: [], total: 0, item_count: 0, t: now, t_server_sent: now });
+  }
+
   // admin dashboard: throttled summary for everyone, the JPEG + boxes only for admins watching this cart
   function publishLive(c, job, snapshot, roi) {
     const now = Date.now();
-    c.recent.push(now);
-    while (c.recent.length && now - c.recent[0] > 5000) c.recent.shift();
+    countFrame(c, now);
     if (hub.isWatched?.(c.label) && now - c.lastWatchMs >= liveMs) {
       c.lastWatchMs = now;
       const header = JSON.stringify({ type: 'frame', cart: c.label, seq: job.seq, session_id: job.sessionId, roi,
@@ -240,12 +262,12 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     c.lastLiveMs = now;
     const snap = snapshot ?? (job.sessionId ? cartSnapshot(db, job.sessionId, { state: job.tracker?.state, frameSeq: job.seq }) : null);
     hub.toAdmins({
-      type: 'live_update', event: 'frame', cart: c.label, session_id: job.sessionId,
-      state: job.tracker?.state ?? null, fps: Math.round((c.recent.length / 5) * 10) / 10,
+      type: 'live_update', event: 'frame', cart: c.label, session_id: job.sessionId, seq: job.seq,
+      state: job.tracker?.state ?? null, fps: liveFps(c),
       detections: job.dets.filter((d) => d.accepted).length,
       server_ms: now - job.t.received, infer_ms: job.result?.infer_ms ?? null,
       items: snap?.items.map((i) => ({ class_name: i.class_name, name: i.name, qty: i.qty, subtotal: i.subtotal })) ?? [],
-      total: snap?.total ?? 0, item_count: snap?.item_count ?? 0, t: now,
+      total: snap?.total ?? 0, item_count: snap?.item_count ?? 0, t: now, t_server_sent: now,
     });
   }
 
