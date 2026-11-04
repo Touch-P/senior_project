@@ -102,6 +102,7 @@ better-sqlite3 13 และ bcrypt 6 มี native binary ที่ build ไว
 - Phase 8: ทุกหน้าใช้ข้อมูลจริง (REST + WebSocket) · `?mock=1` = prototype เดิม · demo วันสอบด้วย `INFERENCE_MODE=mock` + ปุ่มจำลองบนหน้าลูกค้า — [docs/ui.md](docs/ui.md)
 - Phase 9: batch jobs ใน server (session timeout, analytics รายวัน, backup + restore, retention 30 วัน) + export retrain / latency — [docs/jobs.md](docs/jobs.md)
 - P2.7 device client: ปุ่ม "เพิ่ม device (กล้องมือถือ)" + QR จริงใน Admin › Live, ภาพสดในการ์ด Live grid (`latest.jpg` จากหน่วยความจำ), `device.html` เริ่มจากปุ่ม เริ่มส่งภาพ / หยุด, ไม่มี server = ข้อมูลจำลองอัตโนมัติ — [docs/phone-camera.md](docs/phone-camera.md)
+- P2.8 device 30 fps: ภาพคงสัดส่วนตั้งแต่กล้องถึงโมเดล (ไม่ยืด/ครอป, letterbox, EXIF), มือถือส่งได้ถึง 30 fps (หน้าต่าง 8 เฟรม, Worker encoder), tracker นับหน้าต่างเป็นวินาที, inference ใช้ GPU thread เดียว — [docs/phone-camera.md](docs/phone-camera.md) · [docs/pipeline.md](docs/pipeline.md)
 - สิ่งที่ต้องทำด้วยมือ (มือถือจริง, firewall, CA) และงานค้าง: [docs/roadmap.md](docs/roadmap.md)
 
 ## Branch
