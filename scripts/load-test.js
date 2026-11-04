@@ -4,6 +4,7 @@
 //
 //   npm run loadtest -- --carts 1 --fps 30 --seconds 30
 //   npm run loadtest -- --carts 1 --fps 4 --inflight 1        (old stop-and-wait rule: next frame after the ack)
+//   npm run loadtest -- --carts 1 --fps 30 --delay-ms 100    (simulated one-way network delay = RTT 200 ms, like cloudflared)
 //   npm run loadtest -- --carts 1,5,10,20 --seconds 60 --image server/test/fixtures/frames/img-1321.jpg
 //   npm run loadtest -- --base https://192.168.1.20:8443 --insecure        (through the LAN address)
 //
@@ -25,7 +26,8 @@ const { values: opt } = parseArgs({
     base: { type: 'string', default: `http://localhost:${config.PORT}` },
     carts: { type: 'string', default: '1' },
     fps: { type: 'string', default: '4' },
-    inflight: { type: 'string', default: '6' },
+    inflight: { type: 'string', default: '8' },     // same window as device.html
+    'delay-ms': { type: 'string', default: '0' },
     seconds: { type: 'string', default: '30' },
     image: { type: 'string', multiple: true },
     email: { type: 'string', default: config.ADMIN_EMAIL },
@@ -39,6 +41,9 @@ const fixtures = resolve(ROOT, 'server', 'test', 'fixtures', 'frames');
 const images = (opt.image?.length ? opt.image.map((p) => resolve(p)) : readdirSync(fixtures).filter((f) => f.endsWith('.jpg')).map((f) => join(fixtures, f)))
   .map((f) => { const jpeg = readFileSync(f); return { jpeg, ...frameSize(jpeg) }; });
 const fps = Number(opt.fps), seconds = Number(opt.seconds), maxInFlight = Math.max(1, Number(opt.inflight));
+// simulated one-way delay: frames reach the server and answers reach the phone this much later (RTT = 2 × delay)
+const delayMs = Math.max(0, Number(opt['delay-ms']));
+const later = (fn) => (delayMs ? setTimeout(fn, delayMs) : fn());
 const MAX_BUFFERED = 512 * 1024; // same rule as device.html
 const levels = opt.carts.split(',').map(Number);
 
@@ -91,7 +96,8 @@ function runCart(label, token, sessionId, rows) {
       const header = Buffer.from(JSON.stringify({ seq, t_capture: Date.now(), w: img.w, h: img.h }) + '\n');
       sent.set(seq, { t0: now, rtt: null, acked: false });
       inFlight++;
-      ws.send(Buffer.concat([header, img.jpeg]));
+      const msg = Buffer.concat([header, img.jpeg]);
+      later(() => ws.readyState === WebSocket.OPEN && ws.send(msg));
       lastSent = Date.now();
       firstSent ||= lastSent;
     };
@@ -102,7 +108,7 @@ function runCart(label, token, sessionId, rows) {
       tick();
       setInterval(flushMetrics, 2000).unref();
     });
-    ws.on('message', (data, isBinary) => {
+    ws.on('message', (data, isBinary) => later(() => {
       if (isBinary) return;
       const msg = JSON.parse(data.toString());
       const s = sent.get(msg.seq);
@@ -115,7 +121,7 @@ function runCart(label, token, sessionId, rows) {
         metrics.push({ seq: msg.seq, rtt_ms: s.rtt == null ? null : Math.round(s.rtt * 10) / 10, e2e_ms: Math.round(t * 10) / 10 });
         sent.delete(msg.seq);
       }
-    });
+    }));
     ws.on('close', () => resolveCart({ sent: seq, skipped, seconds: Math.max(0.001, (lastSent - firstSent) / 1000) }));
     ws.on('error', reject);
   });

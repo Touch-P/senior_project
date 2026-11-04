@@ -16,7 +16,7 @@
 (() => {
   const APP_VERSION = 'device-1.2.0';
   const MAX_BUFFERED = 512 * 1024;           // skip a frame while this much is still queued in the socket
-  const MAX_IN_FLIGHT = 6;                   // frames sent but not acked yet (30 fps × 200 ms RTT = 6)
+  const MAX_IN_FLIGHT = 8;                   // frames sent but not acked yet: 30 fps × ~250 ms RTT (cloudflared) ≈ 8
   const ACK_TIMEOUT_MS = 2000;               // an ack this late is lost: free its slot
   const MAX_ENCODING = 2;                    // JPEG encodes running at once; more = the phone is too slow, skip
   const Q_MIN = 0.4;                         // adaptive JPEG quality floor (size / ratio are never reduced)
@@ -381,8 +381,12 @@
   // requestVideoFrameCallback fires once per new camera frame; a frame is taken when the next slot of the fps clock
   // is due (due += 1000/fps, so callback/timer jitter never accumulates as drift). Without rVFC: setTimeout to the
   // next slot. Sending is a sliding window: up to MAX_IN_FLIGHT frames may wait for their ack at the same time.
+  // rVFC can stop firing (rendering throttled, some mobile Safari builds): a watchdog timer then takes the same slots
+  // until callbacks come back, so the stream never stalls.
   const HAS_RVFC = typeof HTMLVideoElement !== 'undefined' && 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
-  const loop = { active: false, due: 0, handle: null, timer: null, encoding: 0, camTimes: [] };
+  const RVFC_STALL_MS = 250;
+  const loop = { active: false, due: 0, handle: null, timer: null, encoding: 0, camTimes: [], lastVideoFrame: 0 };
+  const rvfcAlive = () => HAS_RVFC && performance.now() - loop.lastVideoFrame < RVFC_STALL_MS;
   const win = { slots: 0, bufferSkips: 0, calm: 0 }; // 2-second window of the adaptive quality
   function startLoop() {
     stopLoop();
@@ -402,22 +406,30 @@
   function arm() {
     if (!loop.active) return;
     const v = $('#video');
-    if (HAS_RVFC && v) loop.handle = v.requestVideoFrameCallback(onVideoFrame);
-    else loop.timer = setTimeout(onTimer, Math.max(0, loop.due - performance.now()));
+    if (HAS_RVFC && v && loop.handle == null) loop.handle = v.requestVideoFrameCallback(onVideoFrame);
+    // watchdog / fallback clock: at the next slot (+ the stall margin while rVFC is delivering frames)
+    clearTimeout(loop.timer);
+    loop.timer = setTimeout(onTimer, Math.max(0, loop.due - performance.now()) + (rvfcAlive() ? RVFC_STALL_MS : 0));
   }
   function onVideoFrame() {
+    loop.handle = null;
     const now = performance.now();
+    loop.lastVideoFrame = now;
     loop.camTimes.push(now); // camera fps = new video frames per second
     while (loop.camTimes.length && now - loop.camTimes[0] > 3000) loop.camTimes.shift();
     if (isDue(now)) sendFrame();
     arm();
   }
   function onTimer() {
-    if (isDue(performance.now())) sendFrame();
+    loop.timer = null;
+    if (!rvfcAlive() && isDue(performance.now())) sendFrame(); // rVFC missing or stalled: the timer takes the slot
     arm();
   }
   function isDue(now) {
-    const interval = 1000 / S.settings.fps;
+    // without rVFC frames the timer cannot see new camera frames: never faster than the camera says it runs
+    // (a 20 fps camera polled at 30 fps would send every 3rd frame twice)
+    const camRate = rvfcAlive() ? null : stream?.getVideoTracks()[0]?.getSettings?.().frameRate;
+    const interval = 1000 / (camRate > 0 ? Math.min(S.settings.fps, camRate) : S.settings.fps);
     // camera frames arrive with jitter around their 33 ms: a slot may be taken up to 30 % (max 10 ms) early
     if (now < loop.due - Math.min(10, interval * 0.3)) return false;
     loop.due += interval;
@@ -437,7 +449,9 @@
     if (ws.bufferedAmount > MAX_BUFFERED) { S.stats.skipped++; win.bufferSkips++; return; } // slow uplink: drop it
     if (loop.encoding >= MAX_ENCODING) { S.stats.skipped++; return; }                      // phone cannot encode this fast
     const v = $('#video');
-    const size = v && SCFrame.fitLongSide(v.videoWidth, v.videoHeight, S.settings.size);
+    // only a real decoded camera frame (HAVE_CURRENT_DATA): a video that is not playing yet can report 2×2 or 0×0
+    if (!v || v.readyState < 2 || Math.min(v.videoWidth, v.videoHeight) < 16) return;
+    const size = SCFrame.fitLongSide(v.videoWidth, v.videoHeight, S.settings.size);
     if (!size) return;
     const tCapture = Date.now();
     loop.encoding++;
@@ -473,6 +487,8 @@
     const now = Date.now();
     while (sentTimes.length && now - sentTimes[0] > 3000) sentTimes.shift();
     S.stats.fps = opened && S.running ? sentTimes.length / Math.min(3, Math.max(1, (now - opened) / 1000)) : 0;
+    const pnow = performance.now();
+    while (loop.camTimes.length && pnow - loop.camTimes[0] > 3000) loop.camTimes.shift(); // rVFC may have stopped
     const cam = loop.camTimes;
     S.stats.camFps = !S.running ? null
       : cam.length > 1 ? ((cam.length - 1) * 1000) / (cam.at(-1) - cam[0])
