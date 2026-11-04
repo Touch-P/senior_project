@@ -113,7 +113,7 @@ export function attachWebSockets(server, { db, hub, log, onFrame = () => {} }) {
           const frame = parseFrameMessage(data);
           if (!frame) return client.send(JSON.stringify({ type: 'error', error: 'BAD_FRAME' }));
           // ack immediately so the phone can send the next frame and measure RTT (brief section 5 step 2)
-          client.send(JSON.stringify({ type: 'ack', seq: frame.header.seq, server_ts: tReceivedMs }));
+          client.send(JSON.stringify({ type: 'ack', seq: frame.header.seq, frame_seq: frame.header.seq, server_ts: tReceivedMs }));
           if (tReceivedMs - lastTouch > 5000) { lastTouch = tReceivedMs; touchDevice.run(lastTouch, null, device.device_id); }
           onFrame({ cart: label, cartId: device.cart_id, deviceId: device.device_id, seq: frame.header.seq, header: frame.header, jpeg: frame.jpeg, tReceivedMs, ws: client });
         });

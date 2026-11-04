@@ -5,7 +5,7 @@ import { config } from '../config.js';
 import { z } from 'zod';
 import { HttpError, parse } from '../http/errors.js';
 import { cartSnapshot } from '../services/cart.js';
-import { issueDeviceToken } from '../services/devices.js';
+import { deviceBaseUrl, issueDeviceToken } from '../services/devices.js';
 import { activateModel, pick, switchHistory } from '../services/models.js';
 import { REASON_LABELS } from '../pipeline/reasons.js';
 import { routes } from './registry.js';
@@ -15,6 +15,7 @@ const Label = z.string().regex(/^[A-Za-z]-\d{2}$/, 'รหัสรถเข็�
 const Point = z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]);
 const RoiBody = z.object({ roi_polygon: z.array(Point).min(3).max(12) }).strict();
 const WINDOWS = { '1h': 3600e3, '24h': 86400e3, '7d': 7 * 86400e3 };
+const LATEST_MAX_AGE_MS = 10_000;
 
 /** Nearest-rank percentile of a numeric array (ignores null). */
 export function percentile(values, p) {
@@ -78,8 +79,20 @@ export function adminRoutes({ db, hub, inference, log }) {
     res.json({ cart: label, roi_polygon });
   });
 
+  // newest camera frame of a cart, from memory (hub.setLatest). The Live grid loads it when a live_update with a
+  // new seq arrives, so the page never re-renders per frame. 404 = no recent frame -> the card shows its placeholder.
+  r.get('/carts/:label/latest.jpg', (req, res) => {
+    const f = hub.getLatest(parse(Label, req.params.label));
+    if (!f || Date.now() - f.t > LATEST_MAX_AGE_MS) throw new HttpError(404, 'NO_FRAME', 'ยังไม่มีภาพล่าสุดจากกล้องของรถเข็นนี้');
+    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store', 'X-Frame-Seq': String(f.seq), 'X-Frame-Time': String(f.t) });
+    res.send(f.jpeg);
+  });
+
+  // "เพิ่ม device (กล้องมือถือ)" on Admin > Live and `npm run device-link`: rotate the token and return the phone link.
+  // base_url = an address the phone can reach (PUBLIC_URL, else https://<LAN IP>:PORT when certs exist, else null
+  // and the page uses its own origin, e.g. when the admin itself is opened through the cloudflared URL).
   r.admin('post', '/carts/:label/device-token', (req, res) => {
-    res.status(201).json(issueDeviceToken(db, parse(Label, req.params.label)));
+    res.status(201).json({ ...issueDeviceToken(db, parse(Label, req.params.label)), base_url: deviceBaseUrl() });
   });
 
   // ---------------------------------------------------------------- sessions

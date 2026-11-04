@@ -6,11 +6,16 @@
 const API = (() => {
   const params = new URLSearchParams(location.search);
   // ?mock=1 sticks for the tab so hash navigation keeps it; ?mock=0 turns it off
-  let mock = false;
+  // 'auto' = set by Live.boot when no server answered (static hosting): prototype data until the server is back
+  let mock = false, mockAuto = false;
   try {
     if (params.has('mock')) sessionStorage.setItem('sc-mock', params.get('mock') === '0' ? '0' : '1');
-    mock = sessionStorage.getItem('sc-mock') === '1';
+    const m = sessionStorage.getItem('sc-mock');
+    mock = m === '1' || m === 'auto';
+    mockAuto = m === 'auto';
   } catch { mock = params.get('mock') === '1'; }
+  // opened straight from disk (file://): there is no server at all
+  if (location.protocol === 'file:' && params.get('mock') !== '0') { mock = true; mockAuto = true; }
 
   class ApiError extends Error {
     constructor(status, body) {
@@ -62,6 +67,7 @@ const API = (() => {
 
   return {
     get mock() { return mock; },
+    get mockAuto() { return mockAuto; },
     ApiError,
     get: (p) => req('GET', p),
     post: (p, b = {}) => req('POST', p, b),

@@ -19,6 +19,13 @@ export function createHub() {
   const devices = new Map();
   /** @type {Map<string, Set<WebSocket>>} cart label -> admin sockets watching its camera (Live detail) */
   const watchers = new Map();
+  /**
+   * Newest camera frame per cart, for the Live grid (GET /api/admin/carts/:label/latest.jpg).
+   * PDPA: memory only, each frame replaces the previous one, and it is dropped when the camera disconnects.
+   * Nothing here is ever written to disk (evidence frames are a separate, explicit path in pipeline/frameStore.js).
+   * @type {Map<string, { seq: number, jpeg: Buffer, t: number, w: number|null, h: number|null }>}
+   */
+  const latest = new Map();
   /** in-process events between services and the pipeline: session_closing, feedback */
   const events = new EventEmitter();
 
@@ -58,8 +65,11 @@ export function createHub() {
       const old = devices.get(label);
       if (old && old !== ws) old.close(4000, 'replaced by a newer connection');
       devices.set(label, ws);
-      ws.once('close', () => { if (devices.get(label) === ws) devices.delete(label); });
+      ws.once('close', () => { if (devices.get(label) === ws) { devices.delete(label); latest.delete(label); } });
     },
+    setLatest(label, frame) { latest.set(label, frame); },
+    /** @returns {{ seq: number, jpeg: Buffer, t: number, w: number|null, h: number|null } | null} */
+    getLatest: (label) => latest.get(label) ?? null,
     toAdmins(msg) { const s = JSON.stringify(msg); for (const ws of admins) send(ws, s); },
     toDisplay(sessionId, msg) { const s = JSON.stringify(msg); for (const ws of displays.get(sessionId) ?? []) send(ws, s); },
     toDevice(label, msg) { const ws = devices.get(label); if (ws) send(ws, msg); },

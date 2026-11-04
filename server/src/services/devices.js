@@ -1,5 +1,7 @@
 // Camera device tokens: the admin issues a token per cart; the phone presents it on /ws/device/{cart}.
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { networkInterfaces } from 'node:os';
 import { config } from '../config.js';
 import { HttpError } from '../http/errors.js';
 
@@ -28,4 +30,21 @@ export function verifyDeviceToken(db, cartLabel, token) {
   if (!row) return null;
   const a = Buffer.from(row.token_hash, 'hex'), b = Buffer.from(hashToken(token), 'hex');
   return a.length === b.length && timingSafeEqual(a, b) ? { device_id: row.device_id, cart_id: row.cart_id, label: row.label } : null;
+}
+
+/** Private IPv4 of the Wi-Fi adapter (fallback: first private address). */
+export function lanAddress() {
+  const all = Object.entries(networkInterfaces()).flatMap(([name, list]) => (list ?? []).map((a) => ({ name, ...a })))
+    .filter((a) => a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.'));
+  return (all.find((a) => /wi-?fi|wireless|wlan/i.test(a.name)) ?? all[0])?.address ?? null;
+}
+
+/**
+ * Origin a phone can open device.html on: PUBLIC_URL (e.g. the cloudflared https URL) if set,
+ * else https://<LAN IP>:PORT when the LAN certificate exists, else null (the caller uses its own origin).
+ */
+export function deviceBaseUrl() {
+  if (config.PUBLIC_URL) return config.PUBLIC_URL.replace(/\/+$/, '');
+  const host = existsSync(config.tlsCert) && existsSync(config.tlsKey) ? lanAddress() : null;
+  return host ? `https://${host}:${config.PORT}` : null;
 }
