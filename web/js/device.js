@@ -14,6 +14,8 @@
   const APP_VERSION = 'device-1.1.0';
   const MAX_BUFFERED = 512 * 1024;           // skip a frame while this much is still queued in the socket
   const BACKOFF_MIN_MS = 500, BACKOFF_MAX_MS = 10_000;
+  // asked as "ideal" only (see openCamera); 1280×960 = 4:3 like the training photos, but any ratio the camera gives is kept
+  const CAMERA_CONSTRAINTS = { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } };
   const ICON = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
     wifioff: '<path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="M2 2l20 20"/>',
@@ -158,15 +160,24 @@
       return false;
     }
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'environment', width: { ideal: 1280 } } });
+      // ideal values only: no aspectRatio / exact sizes, which make some browsers crop the sensor image.
+      // Whatever the camera really delivers (video.videoWidth × videoHeight) is what gets sent.
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: CAMERA_CONSTRAINTS });
       const track = stream.getVideoTracks()[0];
-      const s = track.getSettings?.() ?? {};
-      S.camera = `${track.label || 'camera'} ${s.width ?? ''}×${s.height ?? ''}`.trim();
       const v = $('#video');
-      // the preview keeps the frame's aspect ratio (object-fit: fill) so the ROI drawn on it matches the frame sent
-      v.addEventListener('loadedmetadata', () => $('#preview').style.setProperty('--ar', `${v.videoWidth} / ${v.videoHeight}`));
+      // the preview box takes the real ratio of the video (and again when the phone rotates: 3:4 <-> 4:3),
+      // so the ROI drawn on it matches the frame sent; object-fit: contain never stretches or crops
+      const syncRatio = () => {
+        if (!v.videoWidth) return;
+        $('#preview').style.setProperty('--ar', `${v.videoWidth} / ${v.videoHeight}`);
+        const s = track.getSettings?.() ?? {};
+        S.camera = `${track.label || 'camera'} ${v.videoWidth}×${v.videoHeight}${s.frameRate ? ` @${Math.round(s.frameRate)}` : ''}`.trim();
+      };
+      v.onloadedmetadata = syncRatio;
+      v.onresize = syncRatio;
       v.srcObject = stream;
       await v.play().catch(() => {});
+      syncRatio();
       return true;
     } catch (err) {
       S.error = cameraError(err);
@@ -183,18 +194,19 @@
 
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
+  /** JPEG of the current video frame: long side = settings.size, short side from the real ratio (never a fixed 640×480). */
   function grab() {
     const v = $('#video');
-    if (!v || !v.videoWidth) return null;
-    const scale = Math.min(1, S.settings.size / Math.max(v.videoWidth, v.videoHeight));
-    canvas.width = Math.round(v.videoWidth * scale);
-    canvas.height = Math.round(v.videoHeight * scale);
+    const size = v && SCFrame.fitLongSide(v.videoWidth, v.videoHeight, S.settings.size);
+    if (!size) return null;
+    // a new size (first frame, or the phone rotated) resizes the canvas; same size keeps it (no realloc per frame)
+    if (canvas.width !== size.width || canvas.height !== size.height) { canvas.width = size.width; canvas.height = size.height; }
     // PDPA: crop the basket ROI on the phone HERE (instruction 4.6 / docs/roadmap.md). Draw only the bounding box
     // of S.roi (normalized corners) with ctx.drawImage(v, sx, sy, sw, sh, 0, 0, cw, ch) and put that rectangle in
     // the header (e.g. {crop: [x0, y0, x1, y1]}) so the server can map boxes and the ROI back to the full frame.
     // Then faces / other shoppers outside the basket never leave the phone. Off for now: the server still expects
     // full frames, so postprocess/geometry must learn the crop offset first.
-    ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(v, 0, 0, size.width, size.height); // whole frame, both axes scaled by the same factor
     return new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/jpeg', S.settings.quality));
   }
 

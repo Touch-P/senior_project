@@ -106,7 +106,8 @@ const LiveAdmin = (() => {
   function cardCam(c, info, connected) {
     const th = A.thumbs[c.cart];
     const off = `<div class="cam-off" style="background:var(--inverse)">${ic(connected ? 'live' : 'wifioff', 28)}<span>${connected ? `${info.detections ?? 0} กล่องใน ROI · ${info.fps ?? 0} fps` : 'กล้องไม่ได้เชื่อมต่อ'}</span></div>`;
-    const img = connected ? `<img data-live-cart="${esc(c.cart)}" ${th?.url ? `src="${th.url}"` : ''} alt="ภาพสดจากกล้องรถเข็น ${esc(c.cart)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;${th?.url ? '' : 'display:none'}">` : '';
+    // contain, not cover: the whole frame with its own ratio (a portrait 3:4 phone shows bars, nothing is cut off)
+    const img = connected ? `<img data-live-cart="${esc(c.cart)}" ${th?.url ? `src="${th.url}"` : ''} alt="ภาพสดจากกล้องรถเข็น ${esc(c.cart)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;${th?.url ? '' : 'display:none'}">` : '';
     return off + img;
   }
 
@@ -299,7 +300,7 @@ const LiveAdmin = (() => {
         ${pill(isLive(d) ? 'connected' : 'disconnected')}${badge('neutral', fr ? `${A.liveInfo[label]?.fps ?? '—'} fps · ${fr.w ?? 640}×${fr.h ?? 480}` : '— fps')}</div>
       <div class="grid-detail">
         <div class="card col gap-12" style="padding:16px">
-          <div class="cam ${camCls}" style="aspect-ratio:${fr?.w && fr?.h ? `${fr.w}/${fr.h}` : '4/3'}" id="live-cam">${liveCamInner(fr, d, occluded)}</div>
+          <div class="cam ${camCls}" style="aspect-ratio:${frameRatio(fr)}" id="live-cam">${liveCamInner(fr, d, occluded)}</div>
           <div class="row wrap gap-12">${toggle('boxes', 'แสดงกรอบ (bounding box)')}${toggle('roi', 'แสดง ROI ตะกร้า')}${toggle('outside', 'แสดงนอก ROI')}
             <span class="spacer"></span><span class="t-cap muted">เส้นประเหลือง = ROI · กรอบแดง = นอก ROI · เส้นประส้ม = ชิ้นที่ถูกบัง</span></div>
         </div>
@@ -318,11 +319,28 @@ const LiveAdmin = (() => {
         <div class="row wrap gap-8">${events.map((e) => { const r = reasonByRemove.get(e.event_id); return `<span class="chip">${pimg(e.class_name, 32, 6)}${badge({ ADD: 'success', REMOVE: 'danger', CORRECTION: 'warning' }[e.event_type], e.event_type)}<span class="t-cap">${esc(e.class_name ?? '')} ${e.qty_delta > 0 ? '+' : '−'}${Math.abs(e.qty_delta)}</span>${r ? badge(r.tone, r.label_th) : ''}<span class="t-cap muted">${hhmmss(e.occurred_at_ms)}</span></span>`; }).join('') || '<span class="t-cap muted">ยังไม่มีเหตุการณ์</span>'}</div></div>`);
   }
 
+  /** CSS aspect-ratio of the Live detail camera = the frame's own ratio (w/h from the JPEG itself, server side),
+   *  so boxes and ROI (normalised to the frame) sit exactly on the image. 4/3 only until the first frame. */
+  const frameRatio = (fr) => (fr?.w > 0 && fr?.h > 0 ? `${fr.w} / ${fr.h}` : '4 / 3');
+  /** Safety net: if the decoded image has another ratio than the header said, the box follows the image. */
+  function fitCamToImage(cam) {
+    const img = cam?.querySelector('.cam-stage img');
+    if (!img) return;
+    const fit = () => {
+      if (!img.naturalWidth || !img.naturalHeight || !A.frame) return;
+      if (A.frame.w !== img.naturalWidth || A.frame.h !== img.naturalHeight) {
+        A.frame.w = img.naturalWidth; A.frame.h = img.naturalHeight;
+        cam.style.aspectRatio = frameRatio(A.frame);
+      }
+    };
+    if (img.complete) fit(); else img.addEventListener('load', fit, { once: true });
+  }
+
   function liveCamInner(fr, d, occluded) {
     const roi = (fr?.roi ?? d.roi_polygon ?? []).map(([x, y]) => `${x * 100},${y * 100}`).join(' ');
     const det = (x) => `<div class="det c-${!x.in_roi ? 'd' : x.accepted ? 'p' : 'w'} ${x.in_roi ? '' : 'outside'}" style="left:${x.box[0] * 100}%;top:${x.box[1] * 100}%;width:${(x.box[2] - x.box[0]) * 100}%;height:${(x.box[3] - x.box[1]) * 100}%"><span>${esc(x.class_name)} ${x.conf.toFixed(2)}${x.in_roi ? '' : ' · นอก ROI'}</span></div>`;
     const occ = occluded.filter((p) => p.last_box).map((p) => `<div class="det det-occluded" style="left:${p.last_box[0] * 100}%;top:${p.last_box[1] * 100}%;width:${(p.last_box[2] - p.last_box[0]) * 100}%;height:${(p.last_box[3] - p.last_box[1]) * 100}%"><span>${esc(p.class_name)} · ถูกบัง${p.occluded_by ? ` (${esc(p.occluded_by)})` : ''}</span></div>`).join('');
-    const img = fr?.url ? `<img src="${fr.url}" alt="ภาพจากกล้องรถเข็น ${esc(d.cart)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill">`
+    const img = fr?.url ? `<img src="${fr.url}" alt="ภาพจากกล้องรถเข็น ${esc(d.cart)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain">`
       : `<div class="cam-off">${ic(d.connection === 'connected' ? 'live' : 'wifioff', 28)}<span>${d.connection === 'connected' ? 'กำลังรอภาพจากกล้อง…' : 'กล้องไม่ได้เชื่อมต่อ · npm run device-link -- ' + esc(d.cart)}</span></div>`;
     return `<div class="cam-stage" style="inset:0;width:100%;height:100%">${img}
       <svg class="roi" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="${roi}" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="8 6" vector-effect="non-scaling-stroke"/></svg>
@@ -343,8 +361,10 @@ const LiveAdmin = (() => {
     A.frame = { ...header, url: frameUrl };
     const cam = document.getElementById('live-cam');
     const d = A.cartDetail[watching];
-    if (!cam || !d || first) return render();
+    if (!cam || !d || first) { render(); return fitCamToImage(document.getElementById('live-cam')); }
+    cam.style.aspectRatio = frameRatio(A.frame); // the phone rotated (3:4 <-> 4:3): follow the new frame
     cam.innerHTML = liveCamInner(A.frame, d, (d.session?.presence ?? []).filter((p) => p.state === 'OCCLUDED'));
+    fitCamToImage(cam);
   });
 
   window.addEventListener('hashchange', () => {

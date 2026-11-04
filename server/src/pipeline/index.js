@@ -6,6 +6,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createFrameStore } from './frameStore.js';
 import { parseRoi } from './geometry.js';
+import { frameSize } from './jpeg.js';
 import { createSimpleCartModel } from './cartModel.js';
 import { createPresenceModel } from './presenceModel.js';
 import { statements, writeFrame } from './persist.js';
@@ -83,10 +84,11 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     c.lastFrameMs = f.tReceivedMs;
     c.device = f.ws ?? c.device;
     c.disconnectedAlerted = false;
+    // real size of the picture (from the JPEG, the header only as fallback): boxes are normalised to it and the
+    // Live view uses it as the aspect ratio, so a portrait 3:4 frame is never shown or stored as 4:3
+    const size = frameSize(f.jpeg, f.header);
     // newest frame in memory for the Live grid thumbnail (hub.setLatest: replaced every frame, never written to disk)
-    const h = f.header ?? {};
-    hub.setLatest?.(f.cart, { seq: f.seq, jpeg: f.jpeg, t: f.tReceivedMs,
-      w: Number.isFinite(h.w) ? h.w : null, h: Number.isFinite(h.h) ? h.h : null });
+    hub.setLatest?.(f.cart, { seq: f.seq, jpeg: f.jpeg, t: f.tReceivedMs, w: size.w, h: size.h });
     const session = syncSession(c);
     if (!session && !hub.isWatched?.(f.cart)) {
       // idle camera (no customer session, nobody watching): nothing is inferred or stored
@@ -94,7 +96,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
       publishIdle(c, f);
       return;
     }
-    const job = { ...f, sessionId: session?.id ?? null, t: { received: f.tReceivedMs } };
+    const job = { ...f, size, sessionId: session?.id ?? null, t: { received: f.tReceivedMs } };
     c.queue.push(job);
     if (c.queue.length > queueMax) dropJob(c, c.queue.shift());
     pump();
@@ -210,7 +212,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     const h = job.header ?? {};
     return {
       session_id: job.sessionId, cart_id: c.cartId, model_id: job.modelId ?? null, seq: job.seq,
-      width: Number.isFinite(h.w) ? h.w : job.result?.w ?? null, height: Number.isFinite(h.h) ? h.h : job.result?.h ?? null,
+      width: job.size?.w ?? job.result?.w ?? null, height: job.size?.h ?? job.result?.h ?? null,
       jpeg_bytes: job.jpeg?.length ?? null,
       t_capture_device_ms: Number.isFinite(h.t_capture) ? h.t_capture : null, // device clock: never subtracted from server times
       t_received_ms: job.t.received,
@@ -253,6 +255,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     if (hub.isWatched?.(c.label) && now - c.lastWatchMs >= liveMs) {
       c.lastWatchMs = now;
       const header = JSON.stringify({ type: 'frame', cart: c.label, seq: job.seq, session_id: job.sessionId, roi,
+        w: job.size?.w ?? job.result?.w ?? null, h: job.size?.h ?? job.result?.h ?? null,
         detections: job.dets.map((d) => ({ class_name: d.class_name, conf: d.conf, box: d.box, in_roi: d.in_roi,
           accepted: d.accepted, track_id: d.local_track_id ?? null })),
         t_server: now });

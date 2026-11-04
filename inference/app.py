@@ -118,6 +118,13 @@ class LoadedModel:
         self.loaded_at_ms = int(time.time() * 1000)
 
     def predict(self, img: np.ndarray, conf: float):
+        """Detect on one BGR frame of any aspect ratio.
+
+        Ultralytics letterboxes the frame (LetterBox: one scale factor for both axes so the long side fits imgsz,
+        the rest padded with grey; rect/auto padding to the stride for .pt weights) — never a plain resize to
+        imgsz x imgsz and never a crop. Boxes are then mapped back through the padding and scale, so
+        result.boxes.xyxyn is normalised to THIS image (orig_shape), not to the padded network input.
+        """
         # quantize=16 is FP16 on CUDA (replaces the deprecated half=True); None keeps FP32 / the artifact's own precision
         return self.model.predict(img, conf=conf, imgsz=self.imgsz, device=self.device,
                                   quantize=16 if self.half else None, verbose=False)[0]
@@ -227,6 +234,7 @@ class Engine:
             if track:
                 d["track_id"] = ids.get(i)
             detections.append(d)
+        # w/h = the decoded frame the boxes are normalised to (after EXIF orientation, before letterboxing)
         return {
             "detections": detections,
             "model": m.name,
@@ -286,6 +294,17 @@ def health():
     }
 
 
+def decode_image(data: bytes) -> np.ndarray | None:
+    """JPEG/PNG bytes -> upright BGR image, or None if the bytes are not an image.
+
+    cv2.IMREAD_COLOR applies the EXIF Orientation tag (OpenCV >= 3.1; IMREAD_IGNORE_ORIENTATION is NOT set), so a
+    phone photo stored sideways with Orientation=6/8 comes out upright, with the width/height the user saw.
+    Canvas-encoded frames from device.html carry no EXIF and are decoded as they are. No resize, no crop here.
+    """
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    return img if img is not None and img.size else None
+
+
 async def read_image(request: Request) -> bytes:
     ctype = request.headers.get("content-type", "")
     if ctype.startswith("multipart/form-data"):
@@ -312,7 +331,7 @@ async def infer(
 ):
     t0 = time.perf_counter()
     data = await read_image(request)
-    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    img = decode_image(data)
     if img is None:
         raise HTTPException(400, {"error": "BAD_IMAGE", "message": "cannot decode image (expected JPEG/PNG)"})
     decode_ms = (time.perf_counter() - t0) * 1000
