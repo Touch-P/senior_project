@@ -7,6 +7,7 @@ const LiveAdmin = (() => {
   const PROTO_IMG = new Set(Object.keys(PRODUCTS));
   const A = state.la = {
     overview: {}, abandon: null, cooc: null, reasons: null, carts: null, cartDetail: {}, liveInfo: {}, frame: null,
+    lastFrame: {}, thumbs: {}, rendered: {}, seen: new Set(), devModal: null, allCarts: null,
     models: null, inference: null, sessions: null, sessionDetail: {}, latency: {}, loading: new Set(),
   };
   const once = async (key, fn) => {
@@ -22,8 +23,12 @@ const LiveAdmin = (() => {
   const hhmmss = (ms) => (ms ? new Date(ms).toLocaleTimeString('en-GB') : '—');
   const mmss = (ms) => { if (ms == null) return '—'; const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
   const shortId = (id) => `${id.slice(0, 4)}…${id.slice(-4)}`;
-  /** camera socket connected, or frames arriving (the demo feeder plays frames without a phone) */
-  const isLive = (c) => c.connection === 'connected' || Date.now() - (A.liveInfo[c.cart]?.t ?? 0) < 5000;
+  /** A cart is live while frame signals (live_update with a seq; also the demo feeder) keep arriving. No frame for
+   *  STALE_MS = disconnected, even if the phone's socket is still open (paused, screen off, tab closed). */
+  const STALE_MS = 5000;
+  const isLive = (c) => Date.now() - (A.lastFrame[c.cart] ?? 0) < STALE_MS;
+  /** a connected camera gets STALE_MS of grace after a page load before its first frame signal arrives */
+  const seedLive = (rows) => { for (const c of rows) if (c.connection === 'connected' && !A.lastFrame[c.cart]) A.lastFrame[c.cart] = Date.now(); };
   const toneOf = { danger: 'danger', warning: 'warning', info: 'primary' };
   const pct = (a, b) => (a == null || b == null || !b ? null : (a - b) / b);
   const delta = (v, digits = 1, unit = '%') => (v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v * (unit === '%' ? 100 : 1)).toFixed(digits)}${unit}`);
@@ -96,8 +101,24 @@ const LiveAdmin = (() => {
   const camBox = (label, { aspect, small = false, body = '', live = true }) => `<div class="cam ${small ? 'cam-sm' : ''}" style="aspect-ratio:${aspect}">${body}
     <div class="cam-tag"><span class="live" ${live ? '' : 'style="background:#64748B;animation:none"'}></span>${live ? 'LIVE' : 'OFFLINE'} · ${esc(label)}</div></div>`;
 
+  /** Live grid camera: the newest JPEG of the phone (<img data-live-cart>, src patched by refreshThumb without a
+   *  re-render), or the "no camera" placeholder. Only the image src changes per frame, never the page. */
+  function cardCam(c, info, connected) {
+    const th = A.thumbs[c.cart];
+    const off = `<div class="cam-off" style="background:var(--inverse)">${ic(connected ? 'live' : 'wifioff', 28)}<span>${connected ? `${info.detections ?? 0} กล่องใน ROI · ${info.fps ?? 0} fps` : 'กล้องไม่ได้เชื่อมต่อ'}</span></div>`;
+    const img = connected ? `<img data-live-cart="${esc(c.cart)}" ${th?.url ? `src="${th.url}"` : ''} alt="ภาพสดจากกล้องรถเข็น ${esc(c.cart)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;${th?.url ? '' : 'display:none'}">` : '';
+    return off + img;
+  }
+
   function viewLive() {
-    if (!A.carts) once('carts', async () => { const r = await API.get('/api/admin/carts'); A.carts = r.carts; await loadAlerts(); });
+    // all carts, shown when they have a session, a camera, or had a live camera while this page was open
+    // (so a phone that goes away turns its card "ขาดการเชื่อมต่อ" instead of making it vanish)
+    if (!A.carts) once('carts', async () => {
+      const r = await API.get('/api/admin/carts?all=1');
+      seedLive(r.carts);
+      A.carts = r.carts.filter((c) => c.session || c.connection === 'connected' || A.lastFrame[c.cart] !== undefined || A.seen.has(c.cart));
+      await loadAlerts();
+    });
     const carts = A.carts ?? [];
     const f = state.liveFilter === 'all' ? 0 : state.liveFilter;
     const withAlert = carts.filter((c) => c.alert), offline = carts.filter((c) => !isLive(c));
@@ -109,30 +130,149 @@ const LiveAdmin = (() => {
       const connected = isLive(c);
       const st = !connected ? 'disconnected' : info.state === 'updating' ? 'updating' : 'connected';
       const alertCls = c.alert ? (c.alert.severity === 'danger' ? 'err' : 'warn') : '';
-      const body = `<div class="cam-off" style="background:var(--inverse)">${ic(connected ? 'live' : 'wifioff', 28)}<span>${connected ? `${info.detections ?? 0} กล่องใน ROI · ${info.fps ?? 0} fps` : 'กล้องไม่ได้เชื่อมต่อ'}</span></div>`;
+      A.rendered[c.cart] = connected;
+      const body = cardCam(c, info, connected);
       return `<a class="card cart-card ${alertCls}" href="#/a/live/${c.cart}" aria-label="เปิดรถเข็น ${c.cart}">
         ${camBox(c.cart, { aspect: 2.4, small: true, body, live: connected })}
         <div class="col gap-8" style="padding:12px 16px">
           <div class="row"><span class="t-strong grow">รถเข็น ${c.cart}</span>${pill(st)}</div>
           <div class="col gap-4">${items.slice(0, 2).map((i) => `<div class="row">${pimg(i.class_name, 20)}<span class="t-cap grow">${esc(i.name)} ×${i.qty}</span><span class="t-cap muted num">${baht(i.subtotal ?? 0)}</span></div>`).join('') || `<span class="t-cap muted">${s ? 'ยังไม่มีสินค้า' : 'ไม่มี session'}</span>`}
             ${items.length > 2 ? `<span class="t-cap-strong" style="color:var(--primary)">+${items.length - 2} รายการ</span>` : ''}</div>
-          <div class="row"><span class="t-h3 grow num">${baht(total)}</span>${badge(info.server_ms > 300 ? 'warning' : 'neutral', info.server_ms != null ? `${info.server_ms} ms` : '— ms')}<span class="t-cap muted" data-upd-live="${c.cart}">${info.t ? `อัปเดต ${Math.max(0, Math.round((Date.now() - info.t) / 1000))} วิ` : '—'}</span></div>
+          <div class="row"><span class="t-h3 grow num">${baht(total)}</span><span data-live-ms="${c.cart}">${msBadge(info)}</span><span class="t-cap muted" data-upd-live="${c.cart}">${info.t ? `อัปเดต ${Math.max(0, Math.round((Date.now() - info.t) / 1000))} วิ` : '—'}</span></div>
           ${info.reason ? `<div class="row">${badge(info.reason.tone, info.reason.label_th)}<span class="t-cap grow trunc">${esc(info.reason.from?.name_th ?? '')}${info.reason.to ? ' → ' + esc(info.reason.to.name_th) : ''}</span></div>` : ''}
         </div>
         ${c.alert ? `<div class="alert-bar ${alertCls}">${ic('alert', 16)}<span>${esc(c.alert.alert_type)} · ${esc(c.alert.message)}</span></div>` : ''}</a>`;
     }).join('');
     const sel = f;
+    const addBtn = isStaff() ? '' : btn('primary', 'm', 'เพิ่ม device (กล้องมือถือ)', 'data-act="dev-open"', 'qr');
     return aShell('live', `
-      ${pageTitle('Live รถเข็น', `Active ${carts.filter((c) => c.session).length} คัน · กล้องต่ออยู่ ${carts.filter(isLive).length} คัน · /ws/admin ทุก ~250 ms`, seg('live-filter', [`ทั้งหมด (${carts.length})`, `มี alert (${withAlert.length})`, `ขาดการเชื่อมต่อ (${offline.length})`], sel))}
-      <div class="cart-grid">${cards || `<p class="muted">${A.carts ? 'ยังไม่มีรถเข็นที่มีลูกค้าหรือกล้องต่ออยู่' : 'กำลังโหลด…'}</p>`}</div>`);
+      ${pageTitle('Live รถเข็น', `Active ${carts.filter((c) => c.session).length} คัน · กล้องต่ออยู่ ${carts.filter(isLive).length} คัน · /ws/admin ทุก ~250 ms`, `<div class="row wrap gap-8">${seg('live-filter', [`ทั้งหมด (${carts.length})`, `มี alert (${withAlert.length})`, `ขาดการเชื่อมต่อ (${offline.length})`], sel)}${addBtn}</div>`)}
+      <div class="cart-grid">${cards || `<p class="muted">${A.carts ? 'ยังไม่มีรถเข็นที่มีลูกค้าหรือกล้องต่ออยู่ · กด "เพิ่ม device (กล้องมือถือ)" เพื่อต่อกล้อง' : 'กำลังโหลด…'}</p>`}</div>
+      ${A.devModal ? deviceModal() : ''}`);
   }
+  const msBadge = (info) => badge(info.server_ms > 300 ? 'warning' : 'neutral', info.server_ms != null ? `${info.server_ms} ms` : '— ms');
+
+  // ------------------------------------------------------------ live grid thumbnails (no re-render per frame)
+  /** Load GET /api/admin/carts/:label/latest.jpg after a live_update with a new seq; one request in flight per cart. */
+  async function refreshThumb(cart, seq) {
+    const th = (A.thumbs[cart] ??= { url: null, seq: -1, busy: false });
+    if (th.busy || seq === th.seq) return;
+    const sel = `img[data-live-cart="${CSS.escape(cart)}"]`;
+    if (!document.querySelector(sel)) return; // card not on screen
+    th.busy = true;
+    try {
+      const res = await fetch(`/api/admin/carts/${encodeURIComponent(cart)}/latest.jpg?seq=${seq}`, { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) return;
+      const url = URL.createObjectURL(await res.blob());
+      const pre = new Image();
+      pre.src = url;
+      await pre.decode().catch(() => {}); // swap only a decoded image: no blank frame between two JPEGs
+      const old = th.url;
+      th.url = url;
+      th.seq = Number(res.headers.get('X-Frame-Seq')) || seq;
+      for (const el of document.querySelectorAll(sel)) { el.src = url; el.style.display = ''; }
+      if (old) setTimeout(() => URL.revokeObjectURL(old), 2000);
+    } catch { /* offline: keep the last picture */ } finally { th.busy = false; }
+  }
+  function dropThumb(cart) {
+    const th = A.thumbs[cart];
+    if (th?.url) URL.revokeObjectURL(th.url);
+    delete A.thumbs[cart];
+  }
+
+  // ------------------------------------------------------------ "เพิ่ม device (กล้องมือถือ)": QR of device.html for a cart
+  // The token comes from POST /api/admin/carts/:label/device-token (admin session) and is shown only in this modal:
+  // nothing secret lives in the page source. A new token makes the cart's previous camera link invalid.
+  const FPS = [2, 3, 4, 5];
+  const isLocalHost = (u) => { try { return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(u).hostname); } catch { return true; } };
+  const savedBase = () => { try { return localStorage.getItem('sc-device-base') || ''; } catch { return ''; } };
+  function deviceUrl(m) {
+    const base = (m.base || '').replace(/\/+$/, '');
+    return `${base}/device.html?${new URLSearchParams({ cart: m.result.cart, fps: String(m.fps), token: m.result.token })}`;
+  }
+  function qrSvgReal(text, size = 220) {
+    if (typeof qrcode === 'undefined') return '<span class="muted">โหลดไลบรารี QR ไม่ได้ · ใช้ลิงก์ด้านล่างแทน</span>';
+    const q = qrcode(0, 'M');
+    q.addData(text);
+    q.make();
+    const n = q.getModuleCount(), m = size / (n + 8);
+    let d = '';
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) d += `M${((x + 4) * m).toFixed(2)} ${((y + 4) * m).toFixed(2)}h${m.toFixed(2)}v${m.toFixed(2)}h-${m.toFixed(2)}z`;
+    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="QR ลิงก์กล้องรถเข็น"><rect width="${size}" height="${size}" fill="#fff"/><path d="${d}" fill="#0F172A"/></svg>`;
+  }
+  function deviceModal() {
+    const m = A.devModal;
+    const carts = A.allCarts ?? [];
+    const opts = carts.map((c) => `<option value="${esc(c.cart)}" ${c.cart === m.cart ? 'selected' : ''}>${esc(c.cart)}${c.connection === 'connected' ? ' · กล้องต่ออยู่' : ''}</option>`).join('') || `<option>${esc(m.cart)}</option>`;
+    const url = m.result ? deviceUrl(m) : '';
+    const warn = !m.result ? ''
+      : isLocalHost(m.base) ? `<div class="banner err" style="margin:0">${ic('alert', 20)}<span class="t-cap">มือถือเปิด localhost ของเครื่องนี้ไม่ได้ · ใส่ https://&lt;IP เครื่อง&gt;:8443 (หลัง npm run lan-https) หรือ URL ของ cloudflared tunnel แล้ว QR จะเปลี่ยนตาม</span></div>`
+      : !/^https:/i.test(m.base) ? `<div class="banner warn" style="margin:0">${ic('alert', 20)}<span class="t-cap">มือถือเปิดกล้องได้เฉพาะหน้า https:// · ใช้ https://&lt;IP&gt;:8443 หรือ cloudflared</span></div>` : '';
+    return `<div class="backdrop" data-act="dev-close-bg"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="dev-title">
+      <div class="row"><span id="dev-title" class="t-h2 grow">เพิ่ม device (กล้องมือถือ)</span><button class="icon-btn bare" data-act="dev-close" aria-label="ปิด">${ic('close')}</button></div>
+      <span class="muted">สแกน QR ด้วยมือถือที่จะติดบนรถเข็น แล้วกด "เริ่มส่งภาพ" ภาพจะขึ้นในการ์ดของรถเข็นนั้นภายในไม่กี่วินาที</span>
+      <div class="row gap-12">
+        <div class="field grow"><label for="dev-cart">รถเข็น</label><div class="input"><select id="dev-cart" data-dev="cart">${opts}</select></div></div>
+        <div class="field" style="width:120px"><label for="dev-fps">อัตราเฟรม</label><div class="input"><select id="dev-fps" data-dev="fps">${FPS.map((f) => `<option value="${f}" ${f === m.fps ? 'selected' : ''}>${f} fps</option>`).join('')}</select></div></div>
+      </div>
+      ${m.result ? `<div class="col gap-12" style="align-items:center">${qrSvgReal(url)}</div>
+        <div class="field"><label for="dev-base">ที่อยู่ server ที่มือถือเข้าถึงได้</label><div class="input"><input id="dev-base" data-dev="base" value="${esc(m.base)}" spellcheck="false" autocomplete="off"></div></div>
+        ${warn}
+        <div class="field"><label for="dev-url">ลิงก์ (มี token ของกล้อง อย่าแชร์ในที่สาธารณะ)</label><div class="input"><input id="dev-url" value="${esc(url)}" readonly></div></div>
+        <span class="t-cap muted">token ของรถเข็น ${esc(m.result.cart)} ถูกสร้างใหม่แล้ว ลิงก์/QR เก่าของคันนี้จะเชื่อมต่อใหม่ไม่ได้ (เครื่องที่ต่ออยู่ยังส่งต่อได้)</span>`
+      : `<div class="banner warn" style="margin:0">${ic('info', 20)}<span class="t-cap">การสร้าง QR จะออก token ใหม่ให้รถเข็นที่เลือก ลิงก์กล้องเดิมของคันนั้นจะใช้ต่อใหม่ไม่ได้</span></div>`}
+      <div class="row" style="justify-content:flex-end;gap:8px">${btn('secondary', 'm', 'ปิด', 'data-act="dev-close"')}
+        ${m.result ? btn('secondary', 'm', 'คัดลอกลิงก์', 'data-act="dev-copy"') : ''}
+        ${btn('primary', 'm', m.busy ? 'กำลังสร้าง…' : m.result ? 'สร้าง QR ใหม่' : 'สร้าง QR', `data-act="dev-issue" ${m.busy ? 'disabled' : ''}`, 'qr')}</div>
+    </div></div>`;
+  }
+  ACT['dev-open'] = () => {
+    A.devModal = { cart: (A.carts ?? []).find((c) => !isLive(c))?.cart ?? 'A-07', fps: 4, base: '', result: null, busy: false };
+    render();
+    once('all-carts', async () => {
+      A.allCarts = (await API.get('/api/admin/carts?all=1')).carts;
+      if (A.devModal && !A.allCarts.some((c) => c.cart === A.devModal.cart)) A.devModal.cart = A.allCarts[0]?.cart ?? A.devModal.cart;
+    });
+  };
+  ACT['dev-close'] = () => { A.devModal = null; render(); };
+  ACT['dev-close-bg'] = (el, e) => { if (e.target === el) { A.devModal = null; render(); } };
+  ACT['dev-issue'] = async () => {
+    const m = A.devModal;
+    if (!m || m.busy) return;
+    m.busy = true; render();
+    try {
+      const r = await API.post(`/api/admin/carts/${encodeURIComponent(m.cart)}/device-token`);
+      // phone-reachable origin: what the admin typed before > this page if it is not localhost > server's LAN/PUBLIC_URL
+      m.base = savedBase() || (!isLocalHost(location.origin) ? location.origin : r.base_url || location.origin);
+      m.result = { cart: r.cart, token: r.token };
+    } catch (err) { toast('danger', err.status === 403 ? 'สร้าง QR ได้เฉพาะ admin' : err.message); }
+    m.busy = false;
+    if (A.devModal === m) render();
+  };
+  ACT['dev-copy'] = async () => {
+    const m = A.devModal;
+    if (!m?.result) return;
+    try { await navigator.clipboard.writeText(deviceUrl(m)); toast('success', 'คัดลอกลิงก์แล้ว'); }
+    catch { document.getElementById('dev-url')?.select(); toast('info', 'เลือกลิงก์ไว้แล้ว กด Ctrl+C เพื่อคัดลอก'); }
+  };
+  document.addEventListener('change', (e) => {
+    const k = e.target.dataset?.dev;
+    const m = A.devModal;
+    if (!k || !m) return;
+    if (k === 'cart') { m.cart = e.target.value; m.result = null; } // new cart = new token (press สร้าง QR)
+    if (k === 'fps') m.fps = Number(e.target.value);
+    if (k === 'base') { m.base = e.target.value.trim(); try { localStorage.setItem('sc-device-base', m.base); } catch { /* private mode */ } }
+    render();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && A.devModal) { A.devModal = null; render(); } });
 
   // ------------------------------------------------------------ live detail
   let watching = null, frameUrl = null;
   function viewLiveDetail(label) {
     if (watching !== label) { watching = label; A.frame = null; API.watch(label); }
     const d = A.cartDetail[label];
-    if (!d) once(`cart-${label}`, async () => { A.cartDetail[label] = await API.get(`/api/admin/carts/${encodeURIComponent(label)}`); });
+    if (!d) once(`cart-${label}`, async () => { const r = await API.get(`/api/admin/carts/${encodeURIComponent(label)}`); seedLive([r]); A.cartDetail[label] = r; });
+    if (d) A.rendered[label] = isLive(d);
     if (!d) return aShell('live', '<p class="muted">กำลังโหลด…</p>');
     const s = d.session;
     const tl = s ? A.sessionDetail[s.session_id] : null;
@@ -214,13 +354,25 @@ const LiveAdmin = (() => {
   });
 
   // live messages from the pipeline
+  // at most one render per 300 ms; a steady 250 ms live_update stream must not postpone it forever (old debounce did)
   let pending = null;
-  const soon = (fn) => { clearTimeout(pending); pending = setTimeout(fn, 300); };
+  const soon = (fn) => { if (!pending) pending = setTimeout(() => { pending = null; fn(); }, 300); };
+  /** what a grid card shows besides the camera: re-render only when this changes, not for every frame */
+  const cardSig = (i) => JSON.stringify([(i.items ?? []).map((x) => [x.class_name, x.qty]), i.total, i.state, i.reason?.label_th]);
   API.on('live_update', (m) => {
     if (m.event === 'session_started' || m.event === 'session_closed') { A.carts = null; delete A.cartDetail[m.cart]; return soon(render); }
     const prev = A.liveInfo[m.cart] ?? {};
+    const wasLive = Date.now() - (A.lastFrame[m.cart] ?? 0) < STALE_MS;
     A.liveInfo[m.cart] = { ...prev, ...m, t: Date.now() };
-    if (currentPath() === '/a/live') soon(render);
+    A.lastFrame[m.cart] = Date.now();
+    A.seen.add(m.cart);
+    if (currentPath() !== '/a/live') return;
+    if (A.devModal) return void (m.seq != null && refreshThumb(m.cart, m.seq)); // keep the modal's fields intact
+    // a camera that is online but not in the list yet (just connected) -> reload the list so its card appears
+    if (A.carts && !A.carts.some((c) => c.cart === m.cart)) { A.carts = null; return soon(render); }
+    if (!wasLive || A.rendered[m.cart] === false || cardSig(prev) !== cardSig(A.liveInfo[m.cart])) soon(render);
+    else { const el = document.querySelector(`[data-live-ms="${CSS.escape(m.cart)}"]`); if (el) el.innerHTML = msBadge(A.liveInfo[m.cart]); }
+    if (m.seq != null) refreshThumb(m.cart, m.seq);
   });
   const refreshCart = (m) => {
     delete A.cartDetail[m.cart];
@@ -237,7 +389,13 @@ const LiveAdmin = (() => {
     refreshCart(m);
   });
   API.on('alert', async () => { try { await loadAlerts(); } catch { /* offline */ } if (currentPath().startsWith('/a/')) soon(render); });
-  API.on('device_status', (m) => { A.carts = null; delete A.cartDetail[m.cart]; if (currentPath().startsWith('/a/live')) soon(render); });
+  API.on('device_status', (m) => {
+    A.seen.add(m.cart);
+    if (m.connection === 'connected') A.lastFrame[m.cart] = Date.now(); // grace until its first frame
+    else { delete A.lastFrame[m.cart]; dropThumb(m.cart); }
+    A.carts = null; A.allCarts = null; delete A.cartDetail[m.cart];
+    if (currentPath().startsWith('/a/live')) soon(render);
+  });
   API.on('model_changed', () => { A.models = null; Live.refreshMeta?.(); if (currentPath() === '/a/models') soon(render); });
 
   // ------------------------------------------------------------ models
@@ -378,6 +536,16 @@ const LiveAdmin = (() => {
         const t = A.liveInfo[el.dataset.updLive]?.t;
         if (t) el.textContent = `อัปเดต ${Math.max(0, Math.round((Date.now() - t) / 1000))} วิ`;
       });
+      // live -> disconnected after STALE_MS without a frame (phone tab closed, screen off, paused)
+      const p = currentPath();
+      const shown = p === '/a/live' ? A.carts ?? [] : p.startsWith('/a/live/') ? [A.cartDetail[p.slice(8)]].filter(Boolean) : [];
+      let changed = false;
+      for (const c of shown) {
+        const live = isLive(c);
+        if (!live && A.thumbs[c.cart]) dropThumb(c.cart);
+        if (A.rendered[c.cart] !== undefined && A.rendered[c.cart] !== live) changed = true;
+      }
+      if (changed && !A.devModal) render();
     }, 1000);
     setInterval(() => { if (state.user) loadAlerts().then(() => { if (currentPath().startsWith('/a/')) render(); }).catch(() => {}); }, 30_000);
   }
