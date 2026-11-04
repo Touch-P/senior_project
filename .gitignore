@@ -2,9 +2,11 @@
 node_modules/
 __pycache__/
 .venv*/
+venv/
 
 # secrets and certificates
 .env
+*.env
 certs/
 
 # runtime data (database, frames, exports, logs)
@@ -16,6 +18,13 @@ data/frames/
 exports/
 *.log
 logs/
+
+# photos / videos captured while testing the phone camera (product photos in web/assets and test fixtures stay tracked)
+captures/
+recordings/
+*.mp4
+*.webm
+*.mov
 
 # model weights and training artifacts (kept in SNP, never committed)
 *.pt
