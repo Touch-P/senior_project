@@ -13,11 +13,13 @@ Weights are opened read-only; nothing is written next to them.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import platform
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -256,10 +258,31 @@ class Engine:
 
 engine = Engine()
 
+# Every prediction runs on ONE long-lived thread. The first CUDA call on a new thread costs ~1.5 s on this machine
+# (per-thread cuBLAS/cuDNN setup, measured on the RTX 3050 Laptop), and the shared FastAPI threadpool hands requests
+# to fresh threads (idle workers exit; a concurrent DELETE /tracks at session start pushes /infer onto a new one) —
+# that stalled the first frame of every session for ~1.6 s and the frame queue dropped what arrived meanwhile.
+GPU_THREAD = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu")
+
+
+async def on_gpu_thread(fn, *args):
+    return await asyncio.get_running_loop().run_in_executor(GPU_THREAD, fn, *args)
+
+
+def warm_gpu_thread() -> float:
+    """Dummy predictions on the GPU thread so its per-thread CUDA/cuDNN setup happens at start, not on a customer
+    frame — for each letterbox shape a phone sends: 4:3 landscape, 3:4 portrait, 1:1 (one setup per shape)."""
+    t0 = time.perf_counter()
+    s = S.imgsz
+    for h, w in ((s * 3 // 4, s), (s, s * 3 // 4), (s, s)):
+        engine.current.predict(np.zeros((h, w, 3), np.uint8), S.conf)
+    return (time.perf_counter() - t0) * 1000
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await run_in_threadpool(engine.load, S.model_path)
+    log.info("gpu thread ready (first call %.0f ms)", await on_gpu_thread(warm_gpu_thread))
     yield
 
 
@@ -335,7 +358,7 @@ async def infer(
     if img is None:
         raise HTTPException(400, {"error": "BAD_IMAGE", "message": "cannot decode image (expected JPEG/PNG)"})
     decode_ms = (time.perf_counter() - t0) * 1000
-    out = await run_in_threadpool(engine.infer, img, cart_id, track)
+    out = await on_gpu_thread(engine.infer, img, cart_id, track)
     out.update({"cart_id": cart_id, "seq": seq, "decode_ms": round(decode_ms, 2)})
     return out
 
@@ -348,6 +371,7 @@ class ModelRequest(BaseModel):
 @app.post("/model")
 async def switch_model(req: ModelRequest):
     m = await run_in_threadpool(engine.load, req.path, req.name)
+    await on_gpu_thread(warm_gpu_thread)  # the new layers get their GPU-thread setup now, not on the next customer frame
     return {"model": m.name, "model_path": str(m.path), "names": m.names, "load_ms": m.load_ms, "warmup_ms": m.warmup_ms}
 
 
