@@ -4,13 +4,13 @@ UI ยังเป็น vanilla JS ของ prototype เดิม (`web/app.j
 
 | ไฟล์ | หน้าที่ |
 | --- | --- |
-| `web/js/api.js` | data layer: REST (`API.get/post/…`) + `/ws/admin` (`API.on(type, fn)`, `API.watch(cart)`) · `?mock=1` = ไม่เรียก server เลย |
+| `web/js/api.js` | data layer: REST (`API.get/post/…`) + `/ws/admin` (`API.on(type, fn)`, `API.watch(cart)`) · `?mock=1` = ไม่เรียก server เลย · ไม่มี server = mock อัตโนมัติ |
 | `web/js/live.js` | login / logout ผ่าน server, กู้ session ตอนเปิดหน้าใหม่, ตัวเลขบนหน้า login จาก `/api/meta` |
 | `web/js/views/customer.js` | C-01…C-09: สแกน QR / กรอกรหัสรถเข็น → `POST /api/sessions`, PDPA + แบบสอบถาม (`PATCH`), ตะกร้าจาก `/ws/display/{id}`, แจ้งรายการผิด, QR สรุปยอดจริง, แผงจำลอง demo |
 | `web/js/views/admin.js` | Dashboard, Live grid + detail (ภาพสด, กรอบถูกบัง, เหตุผลสด), โมเดล (สลับจริง), Sessions (timeline + เหตุผล + ภาพหลักฐาน), Latency |
 | `web/js/views/products.js` | สินค้าและราคา: ค้นหา, สแกนบาร์โค้ด, แก้สินค้า/ราคา, ผูกบาร์โค้ด, เพิ่มสินค้า |
 | `web/js/scanner.js` | กล้อง + BarcodeDetector / ZXing (บาร์โค้ดสินค้า และ QR รถเข็น) |
-| `web/js/device.js` | `device.html` มือถือเป็นกล้องรถเข็น |
+| `web/js/device.js` | `device.html` มือถือเป็นกล้องรถเข็น (ปุ่ม เริ่มส่งภาพ / หยุด) |
 | `web/vendor/` | ZXing (MIT/Apache-2.0) และ qrcode-generator (MIT) เก็บในเครื่อง ไม่ใช้ CDN |
 
 ## สองโหมด
@@ -23,6 +23,14 @@ UI ยังเป็น vanilla JS ของ prototype เดิม (`web/app.j
 | ใช้เมื่อ | ระบบจริง / demo | แผนสำรองวันสอบ (ไม่ต้องมี server เลย: `npx serve web` แล้วเปิด `/?mock=1`) |
 
 `?mock=1` ถูกจำไว้ในแท็บนั้น (sessionStorage) จนกว่าจะเปิด `?mock=0`
+
+**ไม่มี server = mock อัตโนมัติ:** เปิด `web/index.html` จากดิสก์ (`file://`) หรือ static host ที่ไม่มี `/api` (`npx serve web`) หน้าเว็บจะสลับเป็นข้อมูลจำลองเอง (toast "ไม่พบ server") และเช็ก `/api/meta` ทุก 10 วินาที พอ server กลับมาจะแจ้งให้รีเฟรชเพื่อใช้ข้อมูลจริง
+
+## Live grid กับกล้องมือถือ
+
+- การ์ดแสดงภาพสดจาก `<img data-live-cart="A-07">` เมื่อ `live_update` มี `seq` ใหม่ หน้าเว็บโหลด `GET /api/admin/carts/A-07/latest.jpg` (คำขอเดียวต่อรถเข็นในแต่ละช่วง) decode เสร็จแล้วค่อยเปลี่ยน `src` ไม่ render ทั้งหน้าทุกเฟรม การ์ด render ใหม่เฉพาะเมื่อรายการ / ราคารวม / สถานะเปลี่ยน
+- ไม่มีเฟรมเกิน 5 วินาที (ปิดแท็บ, จอดับ, socket ค้าง) = "ขาดการเชื่อมต่อ" และการ์ดยังอยู่ในรายการ (ไม่หายไป) กล้องที่เพิ่งต่อจะโผล่ในรายการเอง
+- ปุ่ม **เพิ่ม device (กล้องมือถือ)** (admin เท่านั้น): เลือกรถเข็น + fps → `POST /api/admin/carts/:label/device-token` → QR จริง (qrcode-generator) ของ `device.html?cart=&fps=&token=` token มาจาก server หลัง login เท่านั้น ไม่มีในโค้ดหน้าเว็บ แก้ "ที่อยู่ server ที่มือถือเข้าถึงได้" ได้ (จำไว้ใน localStorage) และเตือนถ้าเป็น localhost หรือไม่ใช่ https
 
 ## Demo วันสอบ (ไม่ต้องมีมือถือหรือ GPU)
 

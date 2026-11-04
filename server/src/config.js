@@ -18,6 +18,8 @@ const schema = z.object({
   PORT: num(8443),
   HTTP_REDIRECT_PORT: num(8080),
   HOST: z.string().default('0.0.0.0'),
+  // public https origin for phone links (e.g. https://xxxx.trycloudflare.com); empty = https://<LAN IP>:PORT
+  PUBLIC_URL: z.union([z.literal(''), z.string().url()]).default(''),
   TLS_CERT: z.string().default('certs/lan.pem'),
   TLS_KEY: z.string().default('certs/lan-key.pem'),
   DB_PATH: z.string().default('db/smartcart.db'),

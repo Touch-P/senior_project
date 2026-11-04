@@ -47,7 +47,8 @@ Server เดียว (`npm run dev` / `npm start`) ให้บริการ
 | GET | `/api/admin/carts?all=1` | login | การ์ดรถเข็น: การเชื่อมต่อกล้อง, session, รายการ, ยอด, alert ล่าสุด + ตัวนับสำหรับ filter |
 | GET | `/api/admin/carts/:label` | login | รถเข็นคันเดียว |
 | PUT | `/api/admin/carts/:label/roi` | **admin** | `{roi_polygon: [[x,y],...]}` (3–12 จุด, 0–1) → แจ้ง admin + มือถือทันที |
-| POST | `/api/admin/carts/:label/device-token` | **admin** | ออก/หมุน token กล้อง → `{token, url: "/device.html?cart=..&token=.."}` |
+| POST | `/api/admin/carts/:label/device-token` | **admin** | ออก/หมุน token กล้อง → `{cart, token, url: "/device.html?cart=..&token=..", base_url}` · `base_url` = origin ที่มือถือเข้าได้ (`PUBLIC_URL` หรือ `https://<LAN IP>:PORT` ถ้ามี cert, ไม่งั้น `null`) · ใช้โดยปุ่ม "เพิ่ม device (กล้องมือถือ)" |
+| GET | `/api/admin/carts/:label/latest.jpg` | login | เฟรมล่าสุดของกล้องรถเข็นจากหน่วยความจำ (`Cache-Control: no-store`, `X-Frame-Seq`) · 404 ถ้าไม่มีเฟรมใน 10 วินาที · ไม่เคยเขียนลงดิสก์ ลบทิ้งเมื่อกล้องหลุด |
 | GET | `/api/admin/sessions?status=&limit=` | login | รายการ session |
 | GET | `/api/admin/sessions/:id` | login | รายละเอียด + timeline (`cart_events` + `frames.image_path`) |
 | GET | `/api/admin/models` | login | `model_versions` |
@@ -90,7 +91,7 @@ route ค้นหา/แก้สินค้า (`/api/admin/products/*`) ม�
 - กล้องต่อได้ 1 เครื่องต่อรถเข็น เครื่องใหม่แทนที่เครื่องเก่า (ปิดด้วย code 4000)
 
 **เฟรมจากมือถือ** (binary): `JSON header` + `\n` + ไบต์ JPEG, header ต้องมี `seq` (integer), ควรมี `t_capture`, `w`, `h`
-**ack:** `{"type":"ack","seq":7,"server_ts":1793657808894}` ส่งทันทีที่รับเฟรม (ก่อน inference)
+**ack:** `{"type":"ack","seq":7,"frame_seq":7,"server_ts":1793657808894}` ส่งทันทีที่รับเฟรม (ก่อน inference) · `frame_seq` = `seq` (ชื่อตาม brief)
 
 **cart_update** (instruction 2.6):
 
@@ -108,7 +109,7 @@ route ค้นหา/แก้สินค้า (`/api/admin/products/*`) ม�
 **เฟรมไป admin** (binary, เฉพาะคนที่ส่ง `watch` รถเข็นนั้น, ไม่เกิน 4 ภาพ/วินาที): `{"type":"frame","cart","seq","session_id","roi","detections":[{class_name,conf,box,in_roi,accepted,track_id}]}` + `
 ` + JPEG — ไม่มี session ก็ยังได้ภาพ (ใช้ตั้ง ROI) แต่ไม่บันทึก DB
 
-**live_update** (ทุก admin, throttle 250 ms ต่อรถเข็น): `cart`, `session_id`, `state`, `fps`, `detections`, `server_ms`, `infer_ms`, `items`, `total`, `item_count`
+**live_update** (ทุก admin, throttle 250 ms ต่อรถเข็น): `cart`, `session_id`, `seq`, `t_server_sent`, `state`, `fps`, `detections`, `server_ms`, `infer_ms`, `items`, `total`, `item_count` · กล้องที่ยังไม่มี session และไม่มีคน watch ก็ได้ข้อความนี้ (`idle: true`, `items: []`) หน้า Live grid ใช้ `seq` เป็นสัญญาณแล้วโหลด `latest.jpg` เอง (ไม่ส่ง base64, ไม่ render ทั้งหน้า)
 
 **change_reason** (brief 7.6, ส่งทันทีที่สร้าง / final / voided):
 

@@ -23,6 +23,9 @@ const started = Date.now();
 export function createApp({ db, hub, log, inference, pipeline, demo = pipeline ? createDemoFeeder({ db, hub, inference, pipeline }) : null }) {
   const app = express();
   app.disable('x-powered-by');
+  // a reverse proxy on this machine (cloudflared tunnel) sends X-Forwarded-Proto/For: trust it only from loopback,
+  // so req.secure (Secure cookie) and req.ip (login rate limit) describe the real client
+  app.set('trust proxy', 'loopback');
   app.use(securityHeaders);
   app.use(requestLog(log));
 

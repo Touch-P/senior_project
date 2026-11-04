@@ -13,8 +13,10 @@ Senior project ภาค 2 · โมเดลที่ใช้ใน prototype:
 ## เปิด prototype (ไม่ต้องมี backend)
 
 ```powershell
-npx serve web      # แล้วเปิด /?mock=1
+npx serve web      # แล้วเปิด /?mock=1 (หรือดับเบิลคลิก web/index.html ก็ได้)
 ```
+
+ไม่มี server ตอบ `/api` หน้าเว็บจะสลับเป็นข้อมูลจำลองเอง ไม่ต้องใส่ `?mock=1` ก็ได้
 
 แล้วเปิด URL ที่ terminal แสดง (ปกติคือ `http://localhost:3000`)
 
@@ -54,6 +56,8 @@ npm run infer:probe            # ลองส่งภาพตัวอย่�
 npm run lan-https              # ครั้งแรก: cert สำหรับ IP ของ Wi-Fi (+ ติดตั้ง CA บนมือถือ, เปิด firewall ด้วยสิทธิ์ admin)
 npm run device-link -- A-07    # QR ของหน้า device.html สำหรับรถเข็น A-07
 ```
+
+หรือในหน้า Admin › Live กด **เพิ่ม device (กล้องมือถือ)** จะได้ QR เดียวกันบนจอ มือถือสแกนแล้วกด "เริ่มส่งภาพ" การ์ดของรถเข็นนั้นจะแสดงภาพสด ไม่มี cert ใช้ได้ผ่าน cloudflared tunnel (ดู docs/phone-camera.md)
 
 ขั้นตอนเต็ม, การติดตั้ง CA บน Android/iOS และวิธีแก้ปัญหา: [docs/phone-camera.md](docs/phone-camera.md) · pipeline และ load test: [docs/pipeline.md](docs/pipeline.md)
 
@@ -97,6 +101,7 @@ better-sqlite3 13 และ bcrypt 6 มี native binary ที่ build ไว
 - Phase 7: หน้า "สินค้าและราคา" ต่อ API จริง — ค้นหาชื่อไทย/บาร์โค้ด, สแกนด้วยกล้อง (BarcodeDetector + ZXing ในเครื่อง), แก้สินค้า/ราคา (SCD2) + audit, staff ถูกบล็อกที่ server · login ผ่าน server แล้ว (`?mock=1` = prototype เดิม)
 - Phase 8: ทุกหน้าใช้ข้อมูลจริง (REST + WebSocket) · `?mock=1` = prototype เดิม · demo วันสอบด้วย `INFERENCE_MODE=mock` + ปุ่มจำลองบนหน้าลูกค้า — [docs/ui.md](docs/ui.md)
 - Phase 9: batch jobs ใน server (session timeout, analytics รายวัน, backup + restore, retention 30 วัน) + export retrain / latency — [docs/jobs.md](docs/jobs.md)
+- P2.7 device client: ปุ่ม "เพิ่ม device (กล้องมือถือ)" + QR จริงใน Admin › Live, ภาพสดในการ์ด Live grid (`latest.jpg` จากหน่วยความจำ), `device.html` เริ่มจากปุ่ม เริ่มส่งภาพ / หยุด, ไม่มี server = ข้อมูลจำลองอัตโนมัติ — [docs/phone-camera.md](docs/phone-camera.md)
 - สิ่งที่ต้องทำด้วยมือ (มือถือจริง, firewall, CA) และงานค้าง: [docs/roadmap.md](docs/roadmap.md)
 
 ## Branch

@@ -7,16 +7,36 @@ const Live = (() => {
   const L = { meta: null, ready: false };
 
   async function boot() {
-    if (API.mock) return;
+    if (API.mock) { if (API.mockAuto) watchForServer(); return; }
     try {
       const [status, meta] = await Promise.all([API.get('/api/auth/status'), API.get('/api/meta')]);
       L.meta = meta;
       if (status.user) { state.user = status.user; API.startLive(); LiveAdmin.loadAlerts().catch(() => {}); }
       await LiveCustomer.boot();
     } catch (err) {
+      // no server behind this page (network error, or a static host answering 404 without JSON): use the
+      // prototype data instead of empty pages, and switch back by itself once the server answers again
+      if (err.status === 0 || (err.status === 404 && err.code === 'HTTP_ERROR')) {
+        try { sessionStorage.setItem('sc-mock', 'auto'); location.reload(); return new Promise(() => {}); } catch { /* storage blocked */ }
+      }
       toast('danger', `เชื่อมต่อ server ไม่ได้ · เปิด ?mock=1 เพื่อใช้ข้อมูลตัวอย่าง (${err.message})`);
     }
     L.ready = true;
+  }
+
+  /** auto mock: tell the user, and leave mock mode for the next reload when /api/meta answers JSON again */
+  function watchForServer() {
+    setTimeout(() => toast('info', 'ไม่พบ server · ใช้ข้อมูลจำลองของ prototype (ภาพกล้องเป็นภาพตัวอย่าง)'), 300);
+    if (location.protocol === 'file:') return;
+    const timer = setInterval(async () => {
+      try {
+        const r = await fetch('/api/meta', { cache: 'no-store' });
+        if (!r.ok || !/json/.test(r.headers.get('content-type') ?? '')) return;
+        clearInterval(timer);
+        try { sessionStorage.removeItem('sc-mock'); } catch { /* ignore */ }
+        toast('success', 'server ออนไลน์แล้ว · รีเฟรชหน้าเพื่อใช้ข้อมูลจริง');
+      } catch { /* still offline */ }
+    }, 10_000);
   }
 
   /** Server-side login (replaces the client-side ACCOUNTS check of the prototype). */
