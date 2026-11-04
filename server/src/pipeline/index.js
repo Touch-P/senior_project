@@ -321,10 +321,11 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
 
   // customer pressed "รายการไม่ถูกต้อง": keep the recent frames of that cart as evidence (retrain export)
   hub.events?.on('feedback', ({ cart, sessionId, feedbackId }) => {
-    const ring = store.recent(cart).filter((r) => r.sessionId === sessionId);
-    if (!ring.length) return;
-    writer.flush();
-    for (const r of ring) {
+    if (!store.recent(cart).some((r) => r.sessionId === sessionId)) return;
+    writer.flush(); // batched frame rows get their frame_id here
+    const ring = store.recent(cart).filter((r) => r.sessionId === sessionId && r.job.frameId);
+    // the last ~5 s, thinned to ~20 files (30 fps would otherwise write 150 near-identical JPEGs per report)
+    for (const r of store.evidence(ring)) {
       const frameId = r.job.frameId;
       if (!frameId) continue;
       const path = store.save(sessionId, r.seq, r.jpeg, r.t);

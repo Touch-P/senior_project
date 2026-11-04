@@ -1,7 +1,9 @@
 // Simulated phone cameras (instruction part 3.4): N carts stream JPEG frames like device.html does
-// (next frame only after the previous ack, at most FPS per second), then report RTT / E2E / drops.
+// (steady FPS clock without drift, up to --inflight frames waiting for their ack, skip while the socket
+// buffers > 512 KB), then report the fps really sent, frames dropped by the server queue, RTT / E2E / queue.
 //
-//   npm run loadtest -- --carts 1 --fps 4 --seconds 30
+//   npm run loadtest -- --carts 1 --fps 30 --seconds 30
+//   npm run loadtest -- --carts 1 --fps 4 --inflight 1        (old stop-and-wait rule: next frame after the ack)
 //   npm run loadtest -- --carts 1,5,10,20 --seconds 60 --image server/test/fixtures/frames/img-1321.jpg
 //   npm run loadtest -- --base https://192.168.1.20:8443 --insecure        (through the LAN address)
 //
@@ -15,6 +17,7 @@ import { WebSocket } from 'ws';
 import { config, ROOT } from '../server/src/config.js';
 import { openDb } from '../server/src/db/connection.js';
 import { CART_LABELS } from '../server/src/db/seed.js';
+import { frameSize } from '../server/src/pipeline/jpeg.js';
 import { percentile } from '../server/src/routes/admin.js';
 
 const { values: opt } = parseArgs({
@@ -22,6 +25,7 @@ const { values: opt } = parseArgs({
     base: { type: 'string', default: `http://localhost:${config.PORT}` },
     carts: { type: 'string', default: '1' },
     fps: { type: 'string', default: '4' },
+    inflight: { type: 'string', default: '6' },
     seconds: { type: 'string', default: '30' },
     image: { type: 'string', multiple: true },
     email: { type: 'string', default: config.ADMIN_EMAIL },
@@ -33,8 +37,9 @@ if (opt.insecure) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // self-signed
 
 const fixtures = resolve(ROOT, 'server', 'test', 'fixtures', 'frames');
 const images = (opt.image?.length ? opt.image.map((p) => resolve(p)) : readdirSync(fixtures).filter((f) => f.endsWith('.jpg')).map((f) => join(fixtures, f)))
-  .map((f) => readFileSync(f));
-const fps = Number(opt.fps), seconds = Number(opt.seconds);
+  .map((f) => { const jpeg = readFileSync(f); return { jpeg, ...frameSize(jpeg) }; });
+const fps = Number(opt.fps), seconds = Number(opt.seconds), maxInFlight = Math.max(1, Number(opt.inflight));
+const MAX_BUFFERED = 512 * 1024; // same rule as device.html
 const levels = opt.carts.split(',').map(Number);
 
 let cookie = '';
@@ -54,30 +59,47 @@ function runCart(label, token, sessionId, rows) {
   return new Promise((resolveCart, reject) => {
     const wsUrl = new URL(`/ws/device/${label}?token=${token}`, opt.base.replace(/^http/, 'ws'));
     const ws = new WebSocket(wsUrl, { rejectUnauthorized: !opt.insecure });
-    const sent = new Map(); // seq -> { t0, rtt }
+    const sent = new Map(); // seq -> { t0, rtt, acked }
     const metrics = [];
-    let seq = 0, waitingAck = false, stopAt = 0, timer;
+    const skipped = { window: 0, buffer: 0 };
+    let seq = 0, inFlight = 0, stopAt = 0, timer, due = 0, firstSent = 0, lastSent = 0;
+    const interval = 1000 / fps;
     const flushMetrics = () => {
       if (!metrics.length) return;
       fetch(new URL('/api/metrics', opt.base), { method: 'POST', body: JSON.stringify({ cart: label, token, items: metrics.splice(0) }) }).catch(() => {});
     };
+    // fixed clock: due += interval (no drift from timer jitter); if far behind, start again from now (no burst)
+    const schedule = () => {
+      due += interval;
+      const now = performance.now();
+      if (now - due > interval) due = now + interval;
+      timer = setTimeout(tick, Math.max(0, due - now));
+    };
     const tick = () => {
       if (Date.now() >= stopAt) {
-        clearInterval(timer);
         setTimeout(() => { flushMetrics(); ws.close(); }, 1500); // let the last answers arrive
         return;
       }
-      if (waitingAck || ws.readyState !== WebSocket.OPEN) return; // same back-pressure rule as device.html
+      schedule();
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const now = performance.now();
+      for (const s of sent.values()) if (!s.acked && now - s.t0 > 2000) { s.acked = true; inFlight--; } // ack lost
+      if (inFlight >= maxInFlight) { skipped.window++; return; } // same back-pressure rules as device.html
+      if (ws.bufferedAmount > MAX_BUFFERED) { skipped.buffer++; return; }
       seq++;
-      const header = Buffer.from(JSON.stringify({ seq, t_capture: Date.now(), w: 640, h: 480 }) + '\n');
-      sent.set(seq, { t0: performance.now(), rtt: null });
-      waitingAck = true;
-      ws.send(Buffer.concat([header, images[seq % images.length]]));
+      const img = images[seq % images.length];
+      const header = Buffer.from(JSON.stringify({ seq, t_capture: Date.now(), w: img.w, h: img.h }) + '\n');
+      sent.set(seq, { t0: now, rtt: null, acked: false });
+      inFlight++;
+      ws.send(Buffer.concat([header, img.jpeg]));
+      lastSent = Date.now();
+      firstSent ||= lastSent;
     };
     ws.on('open', () => {
-      ws.send(JSON.stringify({ type: 'hello', camera_desc: 'load-test (simulated)', app_version: 'loadtest-1' }));
+      ws.send(JSON.stringify({ type: 'hello', camera_desc: 'load-test (simulated)', app_version: 'loadtest-2', settings: { fps } }));
       stopAt = Date.now() + seconds * 1000;
-      timer = setInterval(tick, 1000 / fps);
+      due = performance.now();
+      tick();
       setInterval(flushMetrics, 2000).unref();
     });
     ws.on('message', (data, isBinary) => {
@@ -86,14 +108,15 @@ function runCart(label, token, sessionId, rows) {
       const s = sent.get(msg.seq);
       if (!s) return;
       const t = performance.now() - s.t0;
-      if (msg.type === 'ack') { s.rtt = t; waitingAck = false; }
+      if (msg.type === 'ack' && !s.acked) { s.rtt = t; s.acked = true; inFlight--; }
       if (msg.type === 'processed') {
+        if (msg.idle) { sent.delete(msg.seq); return; }
         rows.push({ cart: label, session_id: sessionId, seq: msg.seq, rtt_ms: s.rtt, e2e_ms: t, error: msg.error ?? '' });
-        metrics.push({ seq: msg.seq, rtt_ms: Math.round(s.rtt * 10) / 10, e2e_ms: Math.round(t * 10) / 10 });
+        metrics.push({ seq: msg.seq, rtt_ms: s.rtt == null ? null : Math.round(s.rtt * 10) / 10, e2e_ms: Math.round(t * 10) / 10 });
         sent.delete(msg.seq);
       }
     });
-    ws.on('close', () => resolveCart({ sent: seq, answered: rows.filter((r) => r.cart === label).length }));
+    ws.on('close', () => resolveCart({ sent: seq, skipped, seconds: Math.max(0.001, (lastSent - firstSent) / 1000) }));
     ws.on('error', reject);
   });
 }
@@ -128,10 +151,13 @@ for (const n of levels) {
   const dropped = db.prepare(`SELECT SUM(dropped) AS d, COUNT(*) AS n FROM frames WHERE session_id IN (${ph})`).get(...ids);
   const col = (k) => server.map((r) => r[k]);
   const sent = results.reduce((a, r) => a + r.sent, 0);
+  const sendSeconds = results.reduce((a, r) => a + r.seconds, 0) / results.length;
   const ok = rows.filter((r) => !r.error);
   const row = {
-    carts: n, fps_target: fps, fps_per_cart: Math.round((sent / n / seconds) * 10) / 10,
-    frames: sent, dropped_pct: dropped.n ? Math.round((dropped.d / dropped.n) * 1000) / 10 : 0,
+    carts: n, fps_target: fps, inflight: maxInFlight, fps_per_cart: Math.round((sent / n / sendSeconds) * 10) / 10,
+    frames: sent, client_skipped: results.reduce((a, r) => a + r.skipped.window + r.skipped.buffer, 0),
+    dropped_pct: dropped.n ? Math.round((dropped.d / dropped.n) * 1000) / 10 : 0,
+    inferred_fps: Math.round((ok.length / n / sendSeconds) * 10) / 10,
     errors: rows.length - ok.length,
     rtt_p50: percentile(ok.map((r) => r.rtt_ms), 50), rtt_p95: percentile(ok.map((r) => r.rtt_ms), 95),
     e2e_p50: percentile(ok.map((r) => r.e2e_ms), 50), e2e_p95: percentile(ok.map((r) => r.e2e_ms), 95),

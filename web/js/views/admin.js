@@ -184,7 +184,7 @@ const LiveAdmin = (() => {
   // ------------------------------------------------------------ "เพิ่ม device (กล้องมือถือ)": QR of device.html for a cart
   // The token comes from POST /api/admin/carts/:label/device-token (admin session) and is shown only in this modal:
   // nothing secret lives in the page source. A new token makes the cart's previous camera link invalid.
-  const FPS = [2, 3, 4, 5];
+  const FPS = [2, 3, 4, 5, 10, 15, 20, 30]; // same list as device.html (server accepts 1-30); default 4
   const isLocalHost = (u) => { try { return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(u).hostname); } catch { return true; } };
   const savedBase = () => { try { return localStorage.getItem('sc-device-base') || ''; } catch { return ''; } };
   function deviceUrl(m) {

@@ -3,6 +3,7 @@
 //   /ws/display/{session_id}       customer screen (session id = capability)
 //   /ws/device/{cart}?token=...    phone camera (device token), binary frames
 import { WebSocketServer } from 'ws';
+import { z } from 'zod';
 import { COOKIE_NAME, getSessionUser } from '../auth/sessions.js';
 import { parseCookies } from '../http/security.js';
 import { cartSnapshot } from '../services/cart.js';
@@ -10,6 +11,14 @@ import { verifyDeviceToken } from '../services/devices.js';
 
 const HEARTBEAT_MS = 10_000;
 const MAX_FRAME_BYTES = 2 * 1024 * 1024;
+/** Highest frame rate a phone may ask for (device.html, QR in Admin › Live, npm run device-link). */
+export const DEVICE_MAX_FPS = 30;
+/** settings in the phone's hello: what device.html streams with (all optional, unknown keys ignored) */
+export const DeviceSettings = z.object({
+  fps: z.number().int().min(1).max(DEVICE_MAX_FPS).optional(),
+  size: z.number().int().min(160).max(1920).optional(),
+  quality: z.number().min(0.1).max(1).optional(),
+});
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -106,6 +115,14 @@ export function attachWebSockets(server, { db, hub, log, onFrame = () => {} }) {
             if (msg.type === 'ping') client.send(JSON.stringify({ type: 'pong', server_ts: tReceivedMs }));
             // device.html describes itself once per connection (stored for the experiment log, instruction part 3)
             if (msg.type === 'hello') {
+              if (msg.settings !== undefined) {
+                const s = DeviceSettings.safeParse(msg.settings);
+                if (!s.success) {
+                  client.send(JSON.stringify({ type: 'error', error: 'BAD_SETTINGS', message: `fps 1-${DEVICE_MAX_FPS}, size 160-1920 px, quality 0.1-1` }));
+                  return;
+                }
+                client.settings = s.data; // target fps etc. of this connection (the tracker measures the real rate itself)
+              }
               setDeviceInfo.run(String(msg.camera_desc ?? '').slice(0, 200) || null, String(msg.app_version ?? '').slice(0, 50) || null, device.device_id);
             }
             return;
