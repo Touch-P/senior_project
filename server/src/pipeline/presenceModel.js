@@ -146,7 +146,7 @@ export function createPresenceModel({ db, writer, hub, cfg, log, sessionId, cart
 
   return {
     update({ job, tracker, dets, catalog, roi }) {
-      const { actions } = engine.step({ t: job.t.received, dets, stable: tracker.stable, roi, catalog });
+      const { actions } = engine.step({ t: job.t.received, dets, stable: tracker.stable, roi, catalog, scale: tracker.scale ?? 1 });
       const due = reasons.tick(job.t.received);
       const messages = [];
       const itemChange = actions.some((a) => a.kind !== 'state' && a.kind !== 'flip_alert');

@@ -18,7 +18,7 @@
 
 | ค่า | ใช้ | ที่มา |
 | --- | --- | --- |
-| W = 8, K = 3, REMOVE หลังหาย 2W = 16 เฟรม | tracker / exit evidence | brief 5, 7.2 |
+| W = 8, K = 3, REMOVE หลังหาย 2W = 16 เฟรม (จำนวนเฟรมที่ 4 fps; รถเข็นที่เร็วกว่า 6 fps คูณด้วย fps/4 ให้เป็นวินาทีเท่าเดิม เช่น 30 fps: W=60, K=23, 2W=120 — docs/pipeline.md) | tracker / exit evidence | brief 5, 7.2 |
 | ขอบ ROI = 12% ของขนาด ROI | exit evidence ข้อ 1 | brief 7.2 |
 | coverage ≥ 0.3 = ถูกบัง | exit evidence ข้อ 3 | brief 7.2 |
 | หายเกิน 3 เฟรม → OCCLUDED | 7.1 | brief 7.1 |

@@ -7,9 +7,64 @@
 //
 // Every mode assigns local_track_id to accepted detections (greedy IoU with the previous boxes of the same
 // class), which the presence engine uses to follow single items.
+//
+// Frame rate: W=8, K=3 (REMOVE after 2W) were tuned at ~4 fps, i.e. a ~2 s window, ADD after ~0.75 s, REMOVE after
+// ~4 s. At 30 fps the same frame counts would be a 0.27 s window and ADD/REMOVE would flicker. The tracker therefore
+// measures the rate of the frames it really gets (per cart: after inference drops, not what the phone sends) and
+// multiplies every frame count by `scale` = fps / refFps (frame counts rounded), with 20 % hysteresis. Below
+// 1.5 × refFps (6 fps) scale is exactly 1, so 4 fps (and the 2-5 fps settings / scenarios) behave as before; at
+// 30 fps scale = 7.5: W=60 frames (2.0 s), K=23 (0.77 s), REMOVE after 120 (4.0 s) — the 4 fps seconds.
+// Callers that pass no timestamp always get scale 1.
 import { center, iou } from './geometry.js';
 
 export const TRACKER_MODES = ['frame', 'window', 'bytetrack'];
+export const MAX_SCALE = 16;
+
+/** Frame count n (tuned at refFps) at frame-rate scale s. */
+export const scaled = (n, s) => (s === 1 ? n : Math.max(n, Math.round(n * s)));
+
+/**
+ * Frame-rate estimate -> multiplier of the frame counts (W, K, 2W ...): 1 below 1.5 × refFps, else fps / refFps.
+ *  - measured: median gap between the frames of the last 2 s, once there is at least 1 s of them (one burst or one
+ *    late frame does not move it; a short back-to-back burst never counts as a frame rate)
+ *  - before that: the fps the phone said it streams at (hello settings), so a 30 fps session is scaled from its
+ *    first frame; without one, scale 1 (the old behaviour) until the rate is measured
+ * @param {{ refFps?: number, spanMs?: number, maxFps?: number }} [opts]
+ */
+export function createRateScale({ refFps = 4, spanMs = 2000, maxFps = 30 } = {}) {
+  const times = [];
+  let scale = 1, fps = null;
+  return {
+    /**
+     * @param {number} [t] frame time in ms (server receive time); ignored when not a number
+     * @param {number} [declaredFps] target fps of the camera (device hello), used until the rate is measured
+     */
+    update(t, declaredFps) {
+      if (!Number.isFinite(t)) return scale;
+      if (times.length && t < times.at(-1)) times.length = 0; // clock went back (replay restarted): start over
+      times.push(t);
+      while (times.length > 3 && t - times[0] > spanMs) times.shift();
+      if (times.length >= 3 && t - times[0] >= spanMs / 2) {
+        const gaps = times.slice(1).map((v, i) => v - times[i]).sort((a, b) => a - b);
+        const mid = gaps.length >> 1;
+        const gap = gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2;
+        if (gap > 0) fps = 1000 / gap;
+      } else if (Number.isFinite(declaredFps) && declaredFps > 0) {
+        fps = Math.min(maxFps, declaredFps);
+      } else {
+        return scale;
+      }
+      if (fps == null) return scale;
+      const r = fps / refFps;
+      const next = r < 1.5 ? 1 : Math.min(MAX_SCALE, Math.round(r * 100) / 100);
+      // hysteresis: follow only a clear change of rate (> 20 %), so jitter around 30 fps never moves the windows
+      if (next !== scale && Math.abs(next - scale) / scale > 0.2) scale = next;
+      return scale;
+    },
+    get scale() { return scale; },
+    get fps() { return fps; },
+  };
+}
 
 /** Most frequent value; ties go to `prefer` when it is among the tied values (hysteresis), else the larger. */
 export function modeOf(values, prefer) {
@@ -21,11 +76,14 @@ export function modeOf(values, prefer) {
 }
 
 /**
- * @param {{ mode?: 'frame'|'window'|'bytetrack', window?: number, addK?: number, iouMatch?: number }} [opts]
+ * @param {{ mode?: 'frame'|'window'|'bytetrack', window?: number, addK?: number, iouMatch?: number, maxJump?: number,
+ *           refFps?: number }} [opts] window / addK are frame counts at refFps (default 4 fps)
  */
-export function createTracker({ mode = 'window', window: W = 8, addK: K = 3, iouMatch = 0.3, maxJump = 0.25 } = {}) {
+export function createTracker({ mode = 'window', window: W0 = 8, addK: K0 = 3, iouMatch = 0.3, maxJump = 0.25, refFps = 4 } = {}) {
   if (!TRACKER_MODES.includes(mode)) throw new Error(`unknown TRACKER_MODE ${mode}`);
-  const removeAfter = 2 * W;
+  const rate = createRateScale({ refFps });
+  // frame counts of the current scale (scale 1 = the configured W / K)
+  let W = W0, K = K0, removeAfter = 2 * W0;
   let frame = 0;
   let nextId = 1;
   /** @type {Map<number, { id: number, class_name: string, box: number[], hits: number, last: number, extId: number|null }>} */
@@ -79,10 +137,15 @@ export function createTracker({ mode = 'window', window: W = 8, addK: K = 3, iou
 
   /**
    * @param {import('./postprocess.js').Det[]} detections all detections of the frame (only accepted ones count)
-   * @returns {{ frame: number, raw: Map<string, number>, stable: Map<string, number>, changes: { class_name: string, from: number, to: number }[], state: 'stable'|'updating' }}
+   * @param {number} [t] frame time in ms; drives the frame-rate scale (omitted = scale 1, the 4 fps behaviour)
+   * @param {number} [declaredFps] fps the camera said it streams at (used until the real rate is measured)
+   * @returns {{ frame: number, raw: Map<string, number>, stable: Map<string, number>, changes: { class_name: string, from: number, to: number }[],
+   *             state: 'stable'|'updating', scale: number, fps: number|null }}
    */
-  function update(detections) {
+  function update(detections, t, declaredFps) {
     frame++;
+    const scale = rate.update(t, declaredFps);
+    W = scaled(W0, scale); K = scaled(K0, scale); removeAfter = 2 * W;
     const accepted = detections.filter((d) => d.accepted);
     associate(accepted);
     const raw = new Map();
@@ -101,7 +164,7 @@ export function createTracker({ mode = 'window', window: W = 8, addK: K = 3, iou
     for (const [c, s] of classes) {
       const n = raw.get(c) ?? 0;
       s.hist.push(n);
-      if (s.hist.length > W) s.hist.shift();
+      while (s.hist.length > W) s.hist.shift(); // while: the window may also shrink when the rate drops
       let target;
       if (mode === 'frame') {
         target = n;
@@ -123,8 +186,8 @@ export function createTracker({ mode = 'window', window: W = 8, addK: K = 3, iou
       }
     }
     const stable = new Map([...classes].filter(([, s]) => s.stable > 0).map(([c, s]) => [c, s.stable]));
-    return { frame, raw, stable, changes, state: pending ? 'updating' : 'stable' };
+    return { frame, raw, stable, changes, state: pending ? 'updating' : 'stable', scale, fps: rate.fps };
   }
 
-  return { mode, update, tracks, get frame() { return frame; } };
+  return { mode, update, tracks, get frame() { return frame; }, get scale() { return rate.scale; } };
 }

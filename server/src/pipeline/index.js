@@ -6,6 +6,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createFrameStore } from './frameStore.js';
 import { parseRoi } from './geometry.js';
+import { frameSize } from './jpeg.js';
 import { createSimpleCartModel } from './cartModel.js';
 import { createPresenceModel } from './presenceModel.js';
 import { statements, writeFrame } from './persist.js';
@@ -64,7 +65,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
       c.session = {
         id: row.session_id,
         startedAt: row.started_at_ms,
-        tracker: createTracker({ mode: cfg.TRACKER_MODE, window: cfg.TRACKER_WINDOW, addK: cfg.TRACKER_ADD_K }),
+        tracker: createTracker({ mode: cfg.TRACKER_MODE, window: cfg.TRACKER_WINDOW, addK: cfg.TRACKER_ADD_K, refFps: cfg.TRACKER_REF_FPS }),
         model: createCartModel({ db, writer, hub, store, cfg, log, sessionId: row.session_id, cart }),
       };
       store.clear(c.label);
@@ -83,10 +84,11 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     c.lastFrameMs = f.tReceivedMs;
     c.device = f.ws ?? c.device;
     c.disconnectedAlerted = false;
+    // real size of the picture (from the JPEG, the header only as fallback): boxes are normalised to it and the
+    // Live view uses it as the aspect ratio, so a portrait 3:4 frame is never shown or stored as 4:3
+    const size = frameSize(f.jpeg, f.header);
     // newest frame in memory for the Live grid thumbnail (hub.setLatest: replaced every frame, never written to disk)
-    const h = f.header ?? {};
-    hub.setLatest?.(f.cart, { seq: f.seq, jpeg: f.jpeg, t: f.tReceivedMs,
-      w: Number.isFinite(h.w) ? h.w : null, h: Number.isFinite(h.h) ? h.h : null });
+    hub.setLatest?.(f.cart, { seq: f.seq, jpeg: f.jpeg, t: f.tReceivedMs, w: size.w, h: size.h });
     const session = syncSession(c);
     if (!session && !hub.isWatched?.(f.cart)) {
       // idle camera (no customer session, nobody watching): nothing is inferred or stored
@@ -94,7 +96,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
       publishIdle(c, f);
       return;
     }
-    const job = { ...f, sessionId: session?.id ?? null, t: { received: f.tReceivedMs } };
+    const job = { ...f, size, sessionId: session?.id ?? null, t: { received: f.tReceivedMs } };
     c.queue.push(job);
     if (c.queue.length > queueMax) dropJob(c, c.queue.shift());
     pump();
@@ -169,7 +171,9 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     let snapshot = null;
     if (session) {
       // stage 5: tracker
-      const tr = session.tracker.update(dets);
+      // the receive time drives the tracker's frame-rate scale (W / K are frames at TRACKER_REF_FPS)
+      // + the phone's declared fps (hello) until the real rate of this cart is measured
+      const tr = session.tracker.update(dets, job.t.received, job.ws?.settings?.fps);
       job.t.tracker = Date.now();
       job.tracker = tr;
       store.push(c.label, { seq: job.seq, jpeg: job.jpeg, frameId: null, sessionId: session.id, t: job.t.received, job });
@@ -210,7 +214,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     const h = job.header ?? {};
     return {
       session_id: job.sessionId, cart_id: c.cartId, model_id: job.modelId ?? null, seq: job.seq,
-      width: Number.isFinite(h.w) ? h.w : job.result?.w ?? null, height: Number.isFinite(h.h) ? h.h : job.result?.h ?? null,
+      width: job.size?.w ?? job.result?.w ?? null, height: job.size?.h ?? job.result?.h ?? null,
       jpeg_bytes: job.jpeg?.length ?? null,
       t_capture_device_ms: Number.isFinite(h.t_capture) ? h.t_capture : null, // device clock: never subtracted from server times
       t_received_ms: job.t.received,
@@ -253,6 +257,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     if (hub.isWatched?.(c.label) && now - c.lastWatchMs >= liveMs) {
       c.lastWatchMs = now;
       const header = JSON.stringify({ type: 'frame', cart: c.label, seq: job.seq, session_id: job.sessionId, roi,
+        w: job.size?.w ?? job.result?.w ?? null, h: job.size?.h ?? job.result?.h ?? null,
         detections: job.dets.map((d) => ({ class_name: d.class_name, conf: d.conf, box: d.box, in_roi: d.in_roi,
           accepted: d.accepted, track_id: d.local_track_id ?? null })),
         t_server: now });
@@ -263,7 +268,7 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
     const snap = snapshot ?? (job.sessionId ? cartSnapshot(db, job.sessionId, { state: job.tracker?.state, frameSeq: job.seq }) : null);
     hub.toAdmins({
       type: 'live_update', event: 'frame', cart: c.label, session_id: job.sessionId, seq: job.seq,
-      state: job.tracker?.state ?? null, fps: liveFps(c),
+      state: job.tracker?.state ?? null, fps: liveFps(c), tracker_scale: job.tracker?.scale ?? null,
       detections: job.dets.filter((d) => d.accepted).length,
       server_ms: now - job.t.received, infer_ms: job.result?.infer_ms ?? null,
       items: snap?.items.map((i) => ({ class_name: i.class_name, name: i.name, qty: i.qty, subtotal: i.subtotal })) ?? [],
@@ -318,10 +323,11 @@ export function createPipeline({ db, hub, inference, log, cfg, createCartModel }
 
   // customer pressed "รายการไม่ถูกต้อง": keep the recent frames of that cart as evidence (retrain export)
   hub.events?.on('feedback', ({ cart, sessionId, feedbackId }) => {
-    const ring = store.recent(cart).filter((r) => r.sessionId === sessionId);
-    if (!ring.length) return;
-    writer.flush();
-    for (const r of ring) {
+    if (!store.recent(cart).some((r) => r.sessionId === sessionId)) return;
+    writer.flush(); // batched frame rows get their frame_id here
+    const ring = store.recent(cart).filter((r) => r.sessionId === sessionId && r.job.frameId);
+    // the last ~5 s, thinned to ~20 files (30 fps would otherwise write 150 near-identical JPEGs per report)
+    for (const r of store.evidence(ring)) {
       const frameId = r.job.frameId;
       if (!frameId) continue;
       const path = store.save(sessionId, r.seq, r.jpeg, r.t);

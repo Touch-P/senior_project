@@ -63,7 +63,7 @@ RQ4 เทียบ 3 แบบ วัดด้วย **cart accuracy** (สั�
 | 1 | ตั้ง `.env` | ตอนนี้ใช้ `ADMIN_PASSWORD` / `SESSION_SECRET` = `change-me` | `Copy-Item .env.example .env` แล้วแก้ |
 | 2 | Wi-Fi เป็น Private + เปิด firewall | Wi-Fi ของเครื่องเป็น **Public** มือถือเข้าไม่ได้ · ต้องใช้สิทธิ์ Administrator | `scriptsirewall.ps1 -SetPrivate` (Run as administrator) — [phone-camera.md](phone-camera.md) |
 | 3 | ติดตั้ง CA บนมือถือ | browser เปิดกล้องได้เฉพาะ HTTPS | `npm run lan-https` → สแกน QR → ติดตั้ง CA |
-| 4 | วัดผลด้วยมือถือจริง (DoD Phase 5) | ส่ง 4 fps, E2E p95 < 1 วินาที, ทิ้งเฟรม < 5% บน Wi-Fi จริง | `npm run device-link -- A-07` แล้วใช้ 5 นาที · query ใน phone-camera.md |
+| 4 | วัดผลด้วยมือถือจริง (DoD Phase 5 + P2.8) | ส่ง 4 fps และ 30 fps, E2E p95 < 1 วินาที, ทิ้งเฟรม < 5% บน Wi-Fi จริงและผ่าน cloudflared · หมุนจอ 3:4 ↔ 4:3 แล้วกล่องยังตรง · Worker encoder บน Android / iOS (ยังไม่ได้ทดสอบกับมือถือจริง) | `npm run device-link -- A-07 --fps 30` แล้วใช้ 5 นาที · query ใน phone-camera.md |
 | 5 | load test ซ้ำตอนปิดโปรแกรมที่ใช้ GPU | รอบแรกมี Roblox ใช้ GPU อยู่ ตัวเลขยังใช้ในบทที่ 4 ไม่ได้ | `npm run loadtest -- --carts 1,5,10,20 --seconds 60` — [pipeline.md](pipeline.md) |
 | 6 | ตรวจค่าที่ผมตัดสินใจเอง | threshold ★ และตาราง attribute (จุดหยุดข้อ 3/6) | [presence-reasons.md](presence-reasons.md) หัวข้อ ⚠ |
 | 7 | เติมข้อมูลสินค้า | ชื่อไทย 9 คลาสใหม่ (ร่างไว้), บาร์โค้ด Kirei ลาเวนเดอร์/พีช (ซ้ำกันใน xlsx), Babi Mild/Kirei ใช้แทนกันได้ไหม | แก้ `db/seed/products_master.csv` แล้ว `npm run db:seed` หรือแก้ในหน้า "สินค้าและราคา" |
